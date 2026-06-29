@@ -251,29 +251,54 @@ server {
 
 ```bash
 #!/bin/bash
+set -e
 echo "=== $(date) 开始部署 ==="
 
 PROJECT_DIR="/www/wwwroot/buddy.bajiaolu.cn"
+REPO_URL="https://github.com/engrecho/ai-work-buddy.git"
 
-if [ ! -d "$PROJECT_DIR/.git" ]; then
-  cd /www/wwwroot
-  git clone https://github.com/engrecho/ai-work-buddy.git buddy.bajiaolu.cn
+# ── 拉取代码 ──────────────────────────────────────────
+if [ -d "$PROJECT_DIR/.git" ]; then
+  # 已存在 git 仓库，拉取最新代码
   cd $PROJECT_DIR
-else
-  cd $PROJECT_DIR
+  echo "[git] 拉取最新代码..."
   git fetch --all
   git reset --hard origin/main
+elif [ -d "$PROJECT_DIR" ]; then
+  # 目录存在但不是 git 仓库（宝塔建站时自动创建的空目录）
+  # 删除目录后重新 clone
+  echo "[git] 目录已存在但非 git 仓库，重新克隆..."
+  rm -rf $PROJECT_DIR
+  cd /www/wwwroot
+  git clone $REPO_URL buddy.bajiaolu.cn
+  cd $PROJECT_DIR
+else
+  # 目录不存在，直接 clone
+  echo "[git] 首次克隆..."
+  cd /www/wwwroot
+  git clone $REPO_URL buddy.bajiaolu.cn
+  cd $PROJECT_DIR
 fi
 
-# 安装前端依赖并构建
-yarn install
+echo "[git] 当前 commit: $(git rev-parse --short HEAD)"
+
+# ── 前端：安装依赖并构建 ──────────────────────────────
+echo "[前端] 安装依赖..."
+yarn install --frozen-lockfile
+
+echo "[前端] 构建生产版本..."
 yarn build
 
-# 安装后端依赖
-cd $PROJECT_DIR/server
-yarn install
+echo "[前端] build 目录内容:"
+ls -la $PROJECT_DIR/build/ | head -10
 
-# 重启后端服务
+# ── 后端：安装依赖 ────────────────────────────────────
+echo "[后端] 安装依赖..."
+cd $PROJECT_DIR/server
+yarn install --frozen-lockfile
+
+# ── 重启后端服务 ──────────────────────────────────────
+echo "[PM2] 重启后端服务..."
 pm2 restart ai-work-buddy-api 2>/dev/null || pm2 start $PROJECT_DIR/ecosystem.config.cjs
 pm2 save
 
