@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Work Buddy API Server (Express)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+# 修改为你的项目路径和 Node.js 路径
+WorkingDirectory=/www/wwwroot/ai-work-buddy/server
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
