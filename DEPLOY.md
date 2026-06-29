@@ -1,6 +1,8 @@
 # AI Work Buddy — 宝塔面板部署指南
 
 > 架构：MySQL + Express API + Nginx 静态托管
+> 项目路径：`/www/wwwroot/buddy.bajiaolu.cn`
+> 域名：`buddy.bajiaolu.cn`
 
 ---
 
@@ -37,8 +39,8 @@
 
 ```bash
 cd /www/wwwroot
-git clone https://github.com/engrecho/ai-work-buddy.git ai-work-buddy
-cd ai-work-buddy
+git clone https://github.com/engrecho/ai-work-buddy.git buddy.bajiaolu.cn
+cd buddy.bajiaolu.cn
 ```
 
 ---
@@ -55,6 +57,7 @@ cd ai-work-buddy
 ### 方法 B：终端命令
 
 ```bash
+cd /www/wwwroot/buddy.bajiaolu.cn
 mysql -u buddy -p'NX62WP4bDJikBNih' buddy < deploy/mysql-schema.sql
 ```
 
@@ -73,7 +76,7 @@ mysql -u buddy -p'NX62WP4bDJikBNih' buddy -e "SELECT * FROM task_groups;"
 ## 第三步：配置环境变量
 
 ```bash
-cd /www/wwwroot/ai-work-buddy
+cd /www/wwwroot/buddy.bajiaolu.cn
 cp .env.example .env
 ```
 
@@ -96,7 +99,7 @@ PORT=3000
 ## 第四步：安装后端依赖并启动
 
 ```bash
-cd /www/wwwroot/ai-work-buddy/server
+cd /www/wwwroot/buddy.bajiaolu.cn/server
 npm install
 ```
 
@@ -122,7 +125,7 @@ curl http://127.0.0.1:3000/api/task_groups
 # 如果未安装 PM2
 npm install -g pm2
 
-cd /www/wwwroot/ai-work-buddy
+cd /www/wwwroot/buddy.bajiaolu.cn
 pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup  # 设置开机自启
@@ -148,7 +151,7 @@ sudo systemctl status ai-work-buddy
 ## 第五步：构建前端
 
 ```bash
-cd /www/wwwroot/ai-work-buddy
+cd /www/wwwroot/buddy.bajiaolu.cn
 
 # 安装前端依赖
 npm install
@@ -166,21 +169,21 @@ npm run build
 ### 6.1 在宝塔创建网站
 
 1. 宝塔面板 → 网站 → 添加站点
-2. 域名：填入你的域名（如 `workbuddy.bajiaolu.cn`）
-3. 根目录：`/www/wwwroot/ai-work-buddy/build`
+2. 域名：`buddy.bajiaolu.cn`
+3. 根目录：`/www/wwwroot/buddy.bajiaolu.cn/build`
 4. PHP版本：纯静态
 
 ### 6.2 修改 Nginx 配置
 
 1. 宝塔面板 → 网站 → 设置 → 配置文件
-2. 替换为以下内容（修改域名和路径）：
+2. 替换为以下内容：
 
 ```nginx
 server {
     listen 80;
-    server_name workbuddy.bajiaolu.cn;  # ← 改为你的域名
+    server_name buddy.bajiaolu.cn;
 
-    root /www/wwwroot/ai-work-buddy/build;
+    root /www/wwwroot/buddy.bajiaolu.cn/build;
     index index.html;
 
     gzip on;
@@ -224,7 +227,7 @@ server {
 
 ## 第七步：验证部署
 
-1. 打开浏览器访问 `http://你的域名`
+1. 打开浏览器访问 `http://buddy.bajiaolu.cn`
 2. 检查：
    - 页面正常加载
    - Dashboard 显示统计数据（新数据库为 0 是正常的）
@@ -234,12 +237,63 @@ server {
 
 ---
 
+## 宝塔 WebHook 自动部署
+
+### 创建 WebHook
+
+1. 宝塔面板 → 软件商店 → 安装「宝塔WebHook」插件
+2. 打开插件 → 添加 hook
+3. 填写名称：`buddy-deploy`
+4. 执行脚本：
+
+```bash
+#!/bin/bash
+echo "=== $(date) 开始部署 ==="
+
+PROJECT_DIR="/www/wwwroot/buddy.bajiaolu.cn"
+
+if [ ! -d "$PROJECT_DIR/.git" ]; then
+  cd /www/wwwroot
+  git clone https://github.com/engrecho/ai-work-buddy.git buddy.bajiaolu.cn
+  cd $PROJECT_DIR
+else
+  cd $PROJECT_DIR
+  git fetch --all
+  git reset --hard origin/main
+fi
+
+# 安装前端依赖并构建
+npm install
+npm run build
+
+# 安装后端依赖
+cd $PROJECT_DIR/server
+npm install
+
+# 重启后端服务
+pm2 restart ai-work-buddy-api 2>/dev/null || pm2 start $PROJECT_DIR/ecosystem.config.cjs
+pm2 save
+
+echo "=== $(date) 部署完成 ==="
+```
+
+### GitHub 配置 Webhook
+
+1. 打开 `https://github.com/engrecho/ai-work-buddy/settings/hooks/new`
+2. Payload URL 填入宝塔生成的 WebHook URL
+3. Content type: `application/json`
+4. SSL verification: Disable
+5. 触发事件: Just the push event
+6. 点击 Add webhook
+
+---
+
 ## 日常维护
 
 ### 更新代码
 
 ```bash
-cd /www/wwwroot/ai-work-buddy
+cd /www/wwwroot/buddy.bajiaolu.cn
 git pull origin main
 
 # 如果前端依赖有变化
@@ -267,7 +321,7 @@ pm2 logs ai-work-buddy-api
 sudo journalctl -u ai-work-buddy -f
 
 # Nginx 错误日志
-tail -f /www/wwwlogs/<域名>.error.log
+tail -f /www/wwwlogs/buddy.bajiaolu.cn.error.log
 ```
 
 ---
@@ -278,7 +332,7 @@ tail -f /www/wwwlogs/<域名>.error.log
 
 ```bash
 # 检查 build 目录
-ls -la /www/wwwroot/ai-work-buddy/build/
+ls -la /www/wwwroot/buddy.bajiaolu.cn/build/
 # 如果为空，重新执行 npm run build
 ```
 
@@ -302,7 +356,7 @@ curl http://127.0.0.1:3000/api/health
 mysql -u buddy -p'NX62WP4bDJikBNih' buddy -e "SELECT 1;"
 
 # 检查 .env 中数据库配置是否正确
-cat /www/wwwroot/ai-work-buddy/.env | grep DB_
+cat /www/wwwroot/buddy.bajiaolu.cn/.env | grep DB_
 
 # 查看后端日志
 pm2 logs ai-work-buddy-api --lines 50

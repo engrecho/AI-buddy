@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: 'ai-work-buddy-api',
     script: 'server/index.js',
-    cwd: '/www/wwwroot/ai-work-buddy',
+    cwd: '/www/wwwroot/buddy.bajiaolu.cn',
     env: {
       NODE_ENV: 'production',
     },
