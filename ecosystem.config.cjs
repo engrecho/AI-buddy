@@ -5,6 +5,12 @@ module.exports = {
     cwd: '/www/wwwroot/buddy.bajiaolu.cn',
     env: {
       NODE_ENV: 'production',
+      DB_HOST: 'localhost',
+      DB_PORT: '3306',
+      DB_USER: 'buddy',
+      DB_PASSWORD: 'NX62WP4bDJikBNih',
+      DB_NAME: 'buddy',
+      PORT: '3000',
     },
     instances: 1,
     autorestart: true,
