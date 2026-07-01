@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { LayoutDashboard, CheckSquare, FileText, BookOpen, Settings, NotebookPen, X, Minus, GripVertical, Maximize2 } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, FileText, BookOpen, Settings, NotebookPen, X, Minus, GripVertical, Maximize2, LogOut, User } from 'lucide-react';
 import TasksPage from './TasksPage';
 import MemosPage from './MemosPage';
 import ReadingPage from './ReadingPage';
 import DashboardPage from './DashboardPage';
 import { ConfigContent } from '@/components/ConfigSection';
 import NoteView from '@/components/NoteView';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
 
 const navItems = [
   { id: 'dashboard', label: '总览', icon: LayoutDashboard },
@@ -362,6 +364,15 @@ const Index = () => {
   const [floatNoteOpen, setFloatNoteOpen] = useState(false);
   const [floatTasks, setFloatTasks] = useState([]);
 
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {}
+    logout();
+  };
+
   const handleNavClick = (id) => {
     setActiveTab(id);
     setConfigOpen(false);
@@ -411,6 +422,11 @@ const Index = () => {
         <span className='ml-auto text-xs text-gray-400'>
           {new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
         </span>
+        {user && (
+          <Button variant='ghost' size='sm' onClick={handleLogout} className='ml-2 h-7 px-2 text-gray-500' title='登出'>
+            <LogOut className='h-3.5 w-3.5' />
+          </Button>
+        )}
       </header>
 
       {/* ══ PC 端顶部标题栏 ══ */}
@@ -421,16 +437,29 @@ const Index = () => {
           <span className='text-gray-200 select-none leading-none'>|</span>
           <span className='text-base font-medium text-gray-500 leading-none'>{configOpen ? pageTitles.config : pageTitles[activeTab]}</span>
         </div>
-        <span className='ml-auto text-xs text-gray-400'>
-          {(() => {
-            const now = new Date();
-            const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
-            const startOfYear = new Date(now.getFullYear(), 0, 1);
-            const dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
-            const weekNum = Math.ceil((dayOfYear + ((startOfYear.getDay() + 6) % 7)) / 7);
-            return `${dateStr} · 第${weekNum}周`;
-          })()}
-        </span>
+        <div className='ml-auto flex items-center gap-3'>
+          <span className='text-xs text-gray-400'>
+            {(() => {
+              const now = new Date();
+              const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+              const startOfYear = new Date(now.getFullYear(), 0, 1);
+              const dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
+              const weekNum = Math.ceil((dayOfYear + ((startOfYear.getDay() + 6) % 7)) / 7);
+              return `${dateStr} · 第${weekNum}周`;
+            })()}
+          </span>
+          {user && (
+            <div className='flex items-center gap-2 ml-2 pl-3 border-l border-gray-200'>
+              <div className='w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-semibold'>
+                {(user.nickname || user.username || 'U')[0].toUpperCase()}
+              </div>
+              <span className='text-sm text-gray-700'>{user.nickname || user.username}</span>
+              <Button variant='ghost' size='sm' onClick={handleLogout} className='h-7 px-2 text-gray-500 hover:text-red-500' title='登出'>
+                <LogOut className='h-3.5 w-3.5' />
+              </Button>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* ══ 下方区域：左侧边栏 + 右侧内容 ══ */}

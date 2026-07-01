@@ -24,6 +24,15 @@
 // API 基础路径（开发和生产环境都通过 /api 前缀访问）
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
+// 从 localStorage 读取 token（用于在 fetch 请求头中携带）
+function getAuthToken() {
+  try {
+    return localStorage.getItem('ai_work_buddy_token');
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 查询构建器（thenable）
  * 当被 await 或 .then() 调用时，执行 HTTP 请求
@@ -209,7 +218,14 @@ class QueryBuilder {
     const options = {
       method: 'GET',
       headers: {},
+      credentials: 'include', // 允许发送 Cookie
     };
+
+    // 自动附带 JWT Token
+    const token = getAuthToken();
+    if (token) {
+      options.headers['Authorization'] = `Bearer ${token}`;
+    }
 
     switch (this._operation) {
       case 'select':

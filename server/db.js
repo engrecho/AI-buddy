@@ -11,49 +11,60 @@ export const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   charset: 'utf8mb4',
-  // 自动将 ISO 8601 日期字符串转换为 MySQL 格式
   dateStrings: false,
 });
 
 // ── 表结构定义（用于列名验证和 SQL 注入防护）──────────────
+// 注意：包含 user_id 的表需要用户登录后才能访问
 export const TABLE_COLUMNS = {
+  // 用户表（特殊，不参与通用 CRUD 路由）
+  users: [
+    'id', 'username', 'password_hash', 'nickname', 'avatar_url',
+    'created_at', 'last_login_at'
+  ],
+  // 业务表（需要 user_id 过滤）
   tasks: [
-    'id', 'title', 'description', 'status', 'priority', 'parent_id',
+    'id', 'user_id', 'title', 'description', 'status', 'priority', 'parent_id',
     'is_project', 'progress', 'due_date', 'plan_date', 'owner_id',
     'supporter_id', 'related_member_ids', 'owner_ids', 'supporter_ids',
     'group_id', 'tag_ids', 'key_docs', 'related_dx', 'predecessor_ids',
     'successor_ids', 'related_memo_ids', 'need_report', 'created_at', 'updated_at'
   ],
   task_groups: [
-    'id', 'name', 'color', 'sort_order', 'keywords', 'created_at', 'updated_at'
+    'id', 'user_id', 'name', 'color', 'sort_order', 'keywords',
+    'created_at', 'updated_at'
   ],
   task_members: [
-    'id', 'name', 'mis', 'created_at'
+    'id', 'user_id', 'name', 'mis', 'created_at'
   ],
   task_tags: [
-    'id', 'name', 'color', 'created_at'
+    'id', 'user_id', 'name', 'color', 'created_at'
   ],
   task_comments: [
-    'id', 'task_id', 'content', 'comment_type', 'created_at'
+    'id', 'user_id', 'task_id', 'content', 'comment_type', 'created_at'
   ],
   memos: [
-    'id', 'title', 'content', 'memo_type', 'direction', 'related_url',
+    'id', 'user_id', 'title', 'content', 'memo_type', 'direction', 'related_url',
     'related_task_id', 'related_task_ids', 'reading_item_id', 'tag_ids',
     'tags', 'deleted_at', 'created_at', 'updated_at'
   ],
   task_notes: [
-    'id', 'title', 'content', 'related_task_ids', 'created_at', 'updated_at'
+    'id', 'user_id', 'title', 'content', 'related_task_ids', 'created_at', 'updated_at'
   ],
   reading_items: [
-    'id', 'url', 'title', 'summary', 'category', 'is_read', 'is_starred',
+    'id', 'user_id', 'url', 'title', 'summary', 'category', 'is_read', 'is_starred',
     'tags', 'deleted_at', 'created_at'
   ],
   quick_notes: [
-    'id', 'content', 'tags', 'created_at'
+    'id', 'user_id', 'content', 'tags', 'created_at'
   ],
 };
 
-// ── JSON 类型列（需要 stringify/parse）──────────────────────
+// ── 不需要登录的公开表（只读，用于系统预设数据）───────────
+// 当前所有表都需要登录
+export const PUBLIC_TABLES = new Set();
+
+// ── JSON 类型列 ──────────────────────────────────────────────
 export const JSON_COLUMNS = {
   tasks: [
     'related_member_ids', 'owner_ids', 'supporter_ids', 'tag_ids',
@@ -65,7 +76,7 @@ export const JSON_COLUMNS = {
   reading_items: ['tags'],
 };
 
-// ── DATETIME/TIMESTAMP 列（需要日期格式转换）────────────────
+// ── DATETIME 列 ──────────────────────────────────────────────
 export const DATETIME_COLUMNS = {
   tasks: ['due_date', 'plan_date', 'created_at', 'updated_at'],
   task_groups: ['created_at', 'updated_at'],
@@ -76,9 +87,10 @@ export const DATETIME_COLUMNS = {
   task_notes: ['created_at', 'updated_at'],
   reading_items: ['deleted_at', 'created_at'],
   quick_notes: ['created_at'],
+  users: ['created_at', 'last_login_at'],
 };
 
-// ── BOOLEAN 列（TINYINT(1)，需要 0/1 ↔ true/false 转换）─────
+// ── BOOLEAN 列 ───────────────────────────────────────────────
 export const BOOLEAN_COLUMNS = {
   tasks: ['is_project', 'need_report'],
   reading_items: ['is_read', 'is_starred'],

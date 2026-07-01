@@ -1,148 +1,174 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS } from './db.js';
+import {
+  pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS, PUBLIC_TABLES
+} from './db.js';
+import {
+  authMiddleware, optionalAuthMiddleware, generateToken,
+  setAuthCookie, clearAuthCookie, registerUser, loginUser, getCurrentUser
+} from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// 从项目根目录加载 .env
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? false : true, // 生产环境不开放 CORS（同源）
+  credentials: true, // 允许发送 Cookie
+}));
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
 
-// ── 健康检查（必须在 /api/:table 之前定义）──────────────────
+// ── 公开端点（不需要登录）──────────────────────────────────
+
+// 健康检查
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ── 表名白名单 ──────────────────────────────────────────────
-const ALLOWED_TABLES = new Set(Object.keys(TABLE_COLUMNS));
+// ── 认证路由 ────────────────────────────────────────────────
 
-// ── 验证列名 ─────────────────────────────────────────────────
+// 注册
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password, nickname } = req.body;
+    const user = await registerUser({ username, password, nickname });
+    const token = generateToken(user);
+    setAuthCookie(res, token);
+    return res.json({
+      data: { user, token },
+      error: null,
+    });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 登录
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.json({ data: null, error: { message: '请输入用户名和密码' } });
+    }
+    const user = await loginUser({ username, password });
+    const token = generateToken(user);
+    setAuthCookie(res, token);
+    return res.json({
+      data: { user, token },
+      error: null,
+    });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 登出
+app.post('/api/auth/logout', (req, res) => {
+  clearAuthCookie(res);
+  return res.json({ data: { success: true }, error: null });
+});
+
+// 获取当前用户（需要登录）
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await getCurrentUser(req.user.id);
+    if (!user) {
+      return res.json({ data: null, error: { message: '用户不存在' } });
+    }
+    return res.json({ data: user, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// ── 工具函数 ────────────────────────────────────────────────
+
+const ALLOWED_TABLES = new Set(Object.keys(TABLE_COLUMNS));
+const TABLES_WITH_USER_ID = new Set([
+  'tasks', 'task_groups', 'task_members', 'task_tags', 'task_comments',
+  'memos', 'task_notes', 'reading_items', 'quick_notes'
+]);
+
 function validateColumn(table, column) {
   return TABLE_COLUMNS[table]?.includes(column);
 }
 
-// ── 转义标识符（反引号）──────────────────────────────────────
 function escapeId(name) {
   return '`' + String(name).replace(/`/g, '``') + '`';
 }
 
-// ── ISO 8601 → MySQL datetime 转换 ──────────────────────────
-// "2026-07-01T17:06:28.081Z" → "2026-07-01 17:06:28"
-// "2026-07-01T17:06:28Z"     → "2026-07-01 17:06:28"
-// "2026-07-01"               → "2026-07-01 00:00:00" (纯日期补全时间)
 function isoToMysqlDatetime(value) {
   if (typeof value !== 'string') return value;
-  // 匹配 ISO 8601 格式: 2026-07-01T17:06:28.081Z 或 2026-07-01T17:06:28Z
   const isoMatch = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d+)?Z?$/);
-  if (isoMatch) {
-    return `${isoMatch[1]} ${isoMatch[2]}`;
-  }
-  // 纯日期: 2026-07-01
+  if (isoMatch) return `${isoMatch[1]} ${isoMatch[2]}`;
   const dateOnlyMatch = value.match(/^(\d{4}-\d{2}-\d{2})$/);
-  if (dateOnlyMatch) {
-    return `${dateOnlyMatch[1]} 00:00:00`;
-  }
+  if (dateOnlyMatch) return `${dateOnlyMatch[1]} 00:00:00`;
   return value;
 }
 
-// ── MySQL datetime → ISO 8601 转换 ──────────────────────────
-// "2026-07-01 17:06:28" → "2026-07-01T17:06:28.000Z"
-// "2026-07-01"          → "2026-07-01T00:00:00.000Z"
 function mysqlDatetimeToIso(value) {
   if (value === null || value === undefined) return value;
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
+  if (value instanceof Date) return value.toISOString();
   if (typeof value !== 'string') return value;
-  // 匹配 MySQL datetime: 2026-07-01 17:06:28 或 2026-07-01 17:06:28.000
   const dtMatch = value.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(\.\d+)?$/);
-  if (dtMatch) {
-    const iso = `${dtMatch[1]}T${dtMatch[2]}.000Z`;
-    return iso;
-  }
-  // 纯日期: 2026-07-01
+  if (dtMatch) return `${dtMatch[1]}T${dtMatch[2]}.000Z`;
   const dateOnlyMatch = value.match(/^(\d{4}-\d{2}-\d{2})$/);
-  if (dateOnlyMatch) {
-    return `${dateOnlyMatch[1]}T00:00:00.000Z`;
-  }
+  if (dateOnlyMatch) return `${dateOnlyMatch[1]}T00:00:00.000Z`;
   return value;
 }
 
-// ── 准备值（写入数据库前的转换）──────────────────────────────
-// 1. 布尔值 → 0/1
-// 2. ISO 8601 日期 → MySQL datetime
-// 3. JSON 对象 → JSON 字符串
 function prepareValue(table, column, value) {
   if (value === undefined) return null;
   if (value === null) return null;
-
-  // 布尔列: true/false → 1/0
   if (BOOLEAN_COLUMNS[table]?.includes(column)) {
     if (typeof value === 'boolean') return value ? 1 : 0;
     if (typeof value === 'number') return value ? 1 : 0;
   }
-
-  // 日期列: ISO 8601 → MySQL datetime
   if (DATETIME_COLUMNS[table]?.includes(column)) {
     return isoToMysqlDatetime(value);
   }
-
-  // JSON 列: 对象 → JSON 字符串
   if (JSON_COLUMNS[table]?.includes(column) && typeof value === 'object') {
     return JSON.stringify(value);
   }
-
   return value;
 }
 
-// ── 转换 MySQL 行数据（返回给前端前的转换）──────────────────
-// 1. JSON 字符串 → 对象
-// 2. MySQL datetime → ISO 8601
-// 3. TINYINT(1) 0/1 → true/false
 function transformRow(table, row) {
   if (!row) return row;
-
-  // JSON 列: 字符串 → 对象
   for (const col of (JSON_COLUMNS[table] || [])) {
     if (row[col] !== null && typeof row[col] === 'string') {
-      try {
-        row[col] = JSON.parse(row[col]);
-      } catch {
-        // 保留原始字符串
-      }
+      try { row[col] = JSON.parse(row[col]); } catch {}
     }
   }
-
-  // 日期列: MySQL datetime → ISO 8601
   for (const col of (DATETIME_COLUMNS[table] || [])) {
     if (row[col] !== null && row[col] !== undefined) {
       row[col] = mysqlDatetimeToIso(row[col]);
     }
   }
-
-  // 布尔列: 0/1 → true/false
   for (const col of (BOOLEAN_COLUMNS[table] || [])) {
     if (row[col] !== null && row[col] !== undefined) {
       row[col] = row[col] === 1 || row[col] === true;
     }
   }
-
   return row;
 }
 
-// ── 解析过滤器 ──────────────────────────────────────────────
-// 格式: type:column:JSON_value
-// 例如: eq:status:"todo"  is:deleted_at:null  in:id:[1,2,3]
-function parseFilters(filterArray, table) {
+function parseFilters(filterArray, table, userId) {
   const conditions = [];
   const params = [];
+
+  // 自动注入 user_id 过滤（仅对需要登录的表）
+  if (TABLES_WITH_USER_ID.has(table) && userId != null) {
+    conditions.push('`user_id` = ?');
+    params.push(userId);
+  }
 
   for (const f of filterArray) {
     const parts = f.split(':');
@@ -152,88 +178,54 @@ function parseFilters(filterArray, table) {
     const valueStr = parts.slice(2).join(':');
 
     if (!validateColumn(table, column)) continue;
+    // 禁止客户端覆盖 user_id 过滤
+    if (column === 'user_id') continue;
 
     let value;
-    try {
-      value = JSON.parse(valueStr);
-    } catch {
-      value = valueStr;
-    }
+    try { value = JSON.parse(valueStr); } catch { value = valueStr; }
 
     const col = escapeId(column);
-
     switch (type) {
       case 'eq':
-        if (value === null) {
-          conditions.push(`${col} IS NULL`);
-        } else if (typeof value === 'boolean') {
+        if (value === null) conditions.push(`${col} IS NULL`);
+        else if (typeof value === 'boolean') {
           conditions.push(`${col} = ?`);
           params.push(value ? 1 : 0);
         } else {
           conditions.push(`${col} = ?`);
-          // 日期列需要格式转换
-          if (DATETIME_COLUMNS[table]?.includes(column)) {
-            params.push(isoToMysqlDatetime(value));
-          } else {
-            params.push(value);
-          }
+          params.push(DATETIME_COLUMNS[table]?.includes(column) ? isoToMysqlDatetime(value) : value);
         }
         break;
       case 'neq':
-        if (value === null) {
-          conditions.push(`${col} IS NOT NULL`);
-        } else {
-          conditions.push(`${col} != ?`);
-          params.push(value);
-        }
+        if (value === null) conditions.push(`${col} IS NOT NULL`);
+        else { conditions.push(`${col} != ?`); params.push(value); }
         break;
       case 'is':
-        if (value === null) {
-          conditions.push(`${col} IS NULL`);
-        } else if (value === true) {
-          conditions.push(`${col} = 1`);
-        } else if (value === false) {
-          conditions.push(`${col} = 0`);
-        }
+        if (value === null) conditions.push(`${col} IS NULL`);
+        else if (value === true) conditions.push(`${col} = 1`);
+        else if (value === false) conditions.push(`${col} = 0`);
         break;
       case 'in':
         if (Array.isArray(value) && value.length > 0) {
-          const placeholders = value.map(() => '?').join(', ');
-          conditions.push(`${col} IN (${placeholders})`);
+          conditions.push(`${col} IN (${value.map(() => '?').join(', ')})`);
           params.push(...value);
         }
         break;
       case 'gt':
         conditions.push(`${col} > ?`);
-        if (DATETIME_COLUMNS[table]?.includes(column)) {
-          params.push(isoToMysqlDatetime(value));
-        } else {
-          params.push(value);
-        }
+        params.push(DATETIME_COLUMNS[table]?.includes(column) ? isoToMysqlDatetime(value) : value);
         break;
       case 'gte':
         conditions.push(`${col} >= ?`);
-        if (DATETIME_COLUMNS[table]?.includes(column)) {
-          params.push(isoToMysqlDatetime(value));
-        } else {
-          params.push(value);
-        }
+        params.push(DATETIME_COLUMNS[table]?.includes(column) ? isoToMysqlDatetime(value) : value);
         break;
       case 'lt':
         conditions.push(`${col} < ?`);
-        if (DATETIME_COLUMNS[table]?.includes(column)) {
-          params.push(isoToMysqlDatetime(value));
-        } else {
-          params.push(value);
-        }
+        params.push(DATETIME_COLUMNS[table]?.includes(column) ? isoToMysqlDatetime(value) : value);
         break;
       case 'lte':
         conditions.push(`${col} <= ?`);
-        if (DATETIME_COLUMNS[table]?.includes(column)) {
-          params.push(isoToMysqlDatetime(value));
-        } else {
-          params.push(value);
-        }
+        params.push(DATETIME_COLUMNS[table]?.includes(column) ? isoToMysqlDatetime(value) : value);
         break;
       case 'like':
         conditions.push(`${col} LIKE ?`);
@@ -245,20 +237,18 @@ function parseFilters(filterArray, table) {
   return { conditions, params };
 }
 
-// ── 解析排序 ────────────────────────────────────────────────
-// 格式: column:asc  或  column:desc
 function parseOrder(orderArray, table) {
   const orderClauses = [];
   for (const o of orderArray) {
     const [column, direction] = o.split(':');
     if (!validateColumn(table, column)) continue;
+    if (column === 'user_id') continue; // 禁止按 user_id 排序
     const dir = direction === 'desc' ? 'DESC' : 'ASC';
     orderClauses.push(`${escapeId(column)} ${dir}`);
   }
   return orderClauses;
 }
 
-// ── 解析 SELECT 列 ──────────────────────────────────────────
 function parseSelect(selectStr, table) {
   if (!selectStr || selectStr === '*') return '*';
   const columns = selectStr.split(',').map(c => c.trim()).filter(Boolean);
@@ -267,12 +257,25 @@ function parseSelect(selectStr, table) {
   return valid.map(c => escapeId(c)).join(', ');
 }
 
+// ── 通用 CRUD 中间件 ────────────────────────────────────────
+// 业务表需要登录后才能访问
+function requireAuthForBusinessTable(req, res, next) {
+  const { table } = req.params;
+  // users 表走专门路由，不在这里处理
+  if (table === 'users') {
+    return res.json({ data: null, error: { message: 'Forbidden' } });
+  }
+  if (PUBLIC_TABLES.has(table)) return next();
+  if (TABLES_WITH_USER_ID.has(table)) return authMiddleware(req, res, next);
+  return next();
+}
+
 // ════════════════════════════════════════════════════════════
-// 路由处理
+// 通用 CRUD 路由
 // ════════════════════════════════════════════════════════════
 
-// ── SELECT (GET) ────────────────────────────────────────────
-app.get('/api/:table', async (req, res) => {
+// SELECT
+app.get('/api/:table', requireAuthForBusinessTable, async (req, res) => {
   const { table } = req.params;
   if (!ALLOWED_TABLES.has(table)) {
     return res.json({ data: null, error: { message: `Table "${table}" not found` } });
@@ -283,14 +286,14 @@ app.get('/api/:table', async (req, res) => {
     const filters = Array.isArray(filter) ? filter : filter ? [filter] : [];
     const orders = Array.isArray(order) ? order : order ? [order] : [];
 
-    const { conditions, params } = parseFilters(filters, table);
+    const userId = TABLES_WITH_USER_ID.has(table) ? req.user?.id : null;
+    const { conditions, params } = parseFilters(filters, table, userId);
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const selectClause = parseSelect(select, table);
     const orderClauses = parseOrder(orders, table);
     const orderClause = orderClauses.length > 0 ? `ORDER BY ${orderClauses.join(', ')}` : '';
     const limitClause = limit ? `LIMIT ${parseInt(limit, 10)}` : '';
 
-    // 如果请求了 count，先执行 COUNT 查询
     let countResult = null;
     if (count === 'exact') {
       const countSql = `SELECT COUNT(*) as total FROM ${escapeId(table)} ${whereClause}`;
@@ -298,33 +301,22 @@ app.get('/api/:table', async (req, res) => {
       countResult = countRows[0]?.total ?? 0;
     }
 
-    // 主查询
     const sql = `SELECT ${selectClause} FROM ${escapeId(table)} ${whereClause} ${orderClause} ${limitClause}`;
     const [rows] = await pool.query(sql, params);
-
     const data = rows.map(row => transformRow(table, row));
 
     if (single === '1') {
-      return res.json({
-        data: data[0] || null,
-        error: null,
-        count: countResult,
-      });
+      return res.json({ data: data[0] || null, error: null, count: countResult });
     }
-
-    return res.json({
-      data,
-      error: null,
-      count: countResult,
-    });
+    return res.json({ data, error: null, count: countResult });
   } catch (err) {
     console.error('SELECT error:', err);
     return res.json({ data: null, error: { message: err.message } });
   }
 });
 
-// ── INSERT (POST) ────────────────────────────────────────────
-app.post('/api/:table', async (req, res) => {
+// INSERT
+app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
   const { table } = req.params;
   if (!ALLOWED_TABLES.has(table)) {
     return res.json({ data: null, error: { message: `Table "${table}" not found` } });
@@ -336,41 +328,45 @@ app.post('/api/:table', async (req, res) => {
       return res.json({ data: null, error: { message: 'No data provided' } });
     }
 
-    // 获取有效列
     const validCols = TABLE_COLUMNS[table];
     const columns = [];
     const valueRows = [];
 
-    // 收集所有出现的列名
+    // 自动注入 user_id
+    const autoUserId = TABLES_WITH_USER_ID.has(table) ? req.user.id : null;
+
     const allKeys = new Set();
     for (const row of rows) {
       for (const key of Object.keys(row)) {
-        if (validCols.includes(key)) allKeys.add(key);
+        if (validCols.includes(key) && key !== 'user_id') allKeys.add(key); // 禁止客户端设置 user_id
       }
+    }
+    if (autoUserId !== null) {
+      allKeys.add('user_id');
     }
     columns.push(...allKeys);
 
-    // 构建值
     for (const row of rows) {
-      const values = columns.map(col => prepareValue(table, col, row[col]));
+      const values = columns.map(col => {
+        if (col === 'user_id') return autoUserId;
+        return prepareValue(table, col, row[col]);
+      });
       valueRows.push(values);
     }
 
     const placeholders = valueRows.map(() => `(${columns.map(() => '?').join(', ')})`).join(', ');
     const allValues = valueRows.flat();
-
     const columnList = columns.map(c => escapeId(c)).join(', ');
     const sql = `INSERT INTO ${escapeId(table)} (${columnList}) VALUES ${placeholders}`;
 
     const [result] = await pool.query(sql, allValues);
 
-    // 如果只有一个插入且有 insertId，返回带 id 的数据
     let data = null;
     if (rows.length === 1) {
-      data = { ...rows[0] };
+      data = { ...rows[0], user_id: autoUserId };
       if (result.insertId) data.id = result.insertId;
     } else {
-      data = rows;
+      data = rows.map(r => ({ ...r, user_id: autoUserId }));
     }
 
     return res.json({ data, error: null });
@@ -380,8 +376,8 @@ app.post('/api/:table', async (req, res) => {
   }
 });
 
-// ── UPDATE (PATCH) ───────────────────────────────────────────
-app.patch('/api/:table', async (req, res) => {
+// UPDATE
+app.patch('/api/:table', requireAuthForBusinessTable, async (req, res) => {
   const { table } = req.params;
   if (!ALLOWED_TABLES.has(table)) {
     return res.json({ data: null, error: { message: `Table "${table}" not found` } });
@@ -392,27 +388,28 @@ app.patch('/api/:table', async (req, res) => {
     const filters = Array.isArray(filter) ? filter : filter ? [filter] : [];
     const orders = Array.isArray(order) ? order : order ? [order] : [];
 
-    const { conditions, params } = parseFilters(filters, table);
+    const userId = TABLES_WITH_USER_ID.has(table) ? req.user?.id : null;
+    const { conditions, params } = parseFilters(filters, table, userId);
     if (conditions.length === 0) {
-      return res.json({ data: null, error: { message: 'UPDATE requires at least one filter' } });
+      return res.json({ data: null, error: { message: 'UPDATE requires filter' } });
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
-
-    // 构建 SET 子句
     const patch = req.body;
     const validCols = TABLE_COLUMNS[table];
     const setColumns = [];
     const setParams = [];
 
     for (const [key, value] of Object.entries(patch)) {
+      // 禁止客户端修改 user_id 和 password_hash
+      if (key === 'user_id' || key === 'password_hash') continue;
       if (validCols.includes(key)) {
         setColumns.push(`${escapeId(key)} = ?`);
         setParams.push(prepareValue(table, key, value));
       }
     }
 
-    // 自动更新 updated_at（替代 MySQL 触发器）
+    // 自动更新 updated_at
     const TABLES_WITH_UPDATED_AT = ['tasks', 'task_groups', 'memos', 'task_notes'];
     if (TABLES_WITH_UPDATED_AT.includes(table) && !patch.updated_at) {
       setColumns.push('`updated_at` = CURRENT_TIMESTAMP');
@@ -428,19 +425,14 @@ app.patch('/api/:table', async (req, res) => {
 
     const sql = `UPDATE ${escapeId(table)} SET ${setColumns.join(', ')} ${whereClause} ${orderClause} ${limitClause}`;
     const allParams = [...setParams, ...params];
-
     await pool.query(sql, allParams);
 
-    // 如果请求返回数据
     if (returnData === '1') {
       const selectClause = parseSelect(select, table);
       const selectSql = `SELECT ${selectClause} FROM ${escapeId(table)} ${whereClause}`;
       const [rows] = await pool.query(selectSql, params);
       const data = rows.map(row => transformRow(table, row));
-
-      if (single === '1') {
-        return res.json({ data: data[0] || null, error: null });
-      }
+      if (single === '1') return res.json({ data: data[0] || null, error: null });
       return res.json({ data, error: null });
     }
 
@@ -451,8 +443,8 @@ app.patch('/api/:table', async (req, res) => {
   }
 });
 
-// ── DELETE (DELETE) ──────────────────────────────────────────
-app.delete('/api/:table', async (req, res) => {
+// DELETE
+app.delete('/api/:table', requireAuthForBusinessTable, async (req, res) => {
   const { table } = req.params;
   if (!ALLOWED_TABLES.has(table)) {
     return res.json({ data: null, error: { message: `Table "${table}" not found` } });
@@ -463,9 +455,10 @@ app.delete('/api/:table', async (req, res) => {
     const filters = Array.isArray(filter) ? filter : filter ? [filter] : [];
     const orders = Array.isArray(order) ? order : order ? [order] : [];
 
-    const { conditions, params } = parseFilters(filters, table);
+    const userId = TABLES_WITH_USER_ID.has(table) ? req.user?.id : null;
+    const { conditions, params } = parseFilters(filters, table, userId);
     if (conditions.length === 0) {
-      return res.json({ data: null, error: { message: 'DELETE requires at least one filter' } });
+      return res.json({ data: null, error: { message: 'DELETE requires filter' } });
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;

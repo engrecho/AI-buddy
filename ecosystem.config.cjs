@@ -11,6 +11,8 @@ module.exports = {
       DB_PASSWORD: 'NX62WP4bDJikBNih',
       DB_NAME: 'buddy',
       PORT: '3000',
+      // 必填：JWT 签名密钥，部署后请改成你自己的随机字符串
+      JWT_SECRET: 'ai-work-buddy-production-please-change-this-secret',
     },
     instances: 1,
     autorestart: true,

@@ -8,11 +8,27 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ============================================================
+-- 0. users（用户表）
+-- ============================================================
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `username` VARCHAR(64) NOT NULL UNIQUE,
+    `password_hash` VARCHAR(255) NOT NULL,
+    `nickname` VARCHAR(255),
+    `avatar_url` TEXT,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `last_login_at` TIMESTAMP NULL,
+    UNIQUE KEY `uk_users_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
 -- 1. tasks（核心任务表）
 -- ============================================================
 DROP TABLE IF EXISTS `tasks`;
 CREATE TABLE `tasks` (
     `id` BIGINT NOT NULL PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `title` TEXT NOT NULL,
     `description` LONGTEXT,
     `status` VARCHAR(20) NOT NULL DEFAULT 'todo',
@@ -67,6 +83,7 @@ CREATE TABLE `task_groups` (
 DROP TABLE IF EXISTS `task_members`;
 CREATE TABLE `task_members` (
     `id` BIGINT NOT NULL PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `name` VARCHAR(255) NOT NULL,
     `mis` VARCHAR(255),
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -142,6 +159,7 @@ CREATE TABLE `task_notes` (
 DROP TABLE IF EXISTS `reading_items`;
 CREATE TABLE `reading_items` (
     `id` BIGINT NOT NULL PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `url` TEXT NOT NULL,
     `title` VARCHAR(500),
     `summary` LONGTEXT,
@@ -161,6 +179,7 @@ CREATE TABLE `reading_items` (
 DROP TABLE IF EXISTS `quick_notes`;
 CREATE TABLE `quick_notes` (
     `id` BIGINT NOT NULL PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `content` TEXT NOT NULL,
     `tags` TEXT,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -175,16 +194,9 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================
 
 -- ============================================================
--- 初始数据：预设任务分组
+-- 初始数据：每个用户首次登录时会自动创建预设分组
+-- 见 server/auth.js 的 createDefaultGroupsForUser()
 -- ============================================================
-INSERT IGNORE INTO `task_groups` (`id`, `name`, `color`, `sort_order`, `keywords`) VALUES
-    (1108465676, '品牌发展', '#06b6d4', 2, JSON_ARRAY('品牌', '发展')),
-    (2394361001, '营运标准', '#ec4899', 3, JSON_ARRAY('营运', '标准')),
-    (5899071651, '加盟商管', '#f59e0b', 4, JSON_ARRAY('加盟', '门店')),
-    (9408221420, '产运数据', NULL, 5, JSON_ARRAY()),
-    (6151528880, '日常管理', '#ef4444', 6, JSON_ARRAY()),
-    (3226334826, '个人项目', NULL, 7, JSON_ARRAY()),
-    (2446698303, '其他', NULL, 8, JSON_ARRAY());
 
 -- ============================================================
 -- 完成
