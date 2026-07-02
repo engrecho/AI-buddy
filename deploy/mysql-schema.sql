@@ -67,13 +67,15 @@ CREATE TABLE `tasks` (
 DROP TABLE IF EXISTS `task_groups`;
 CREATE TABLE `task_groups` (
     `id` BIGINT NOT NULL PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `name` VARCHAR(255) NOT NULL,
     `color` VARCHAR(20),
     `sort_order` INT,
     `keywords` JSON,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX `idx_task_groups_sort_order` (`sort_order`)
+    INDEX `idx_task_groups_sort_order` (`sort_order`),
+    INDEX `idx_task_groups_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -107,11 +109,13 @@ CREATE TABLE `task_tags` (
 DROP TABLE IF EXISTS `task_comments`;
 CREATE TABLE `task_comments` (
     `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `task_id` BIGINT NOT NULL,
     `content` LONGTEXT,
     `comment_type` VARCHAR(20) DEFAULT 'comment',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_task_comments_task_id` (`task_id`),
+    INDEX `idx_task_comments_user_id` (`user_id`),
     INDEX `idx_task_comments_created_at` (`created_at` DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -121,6 +125,7 @@ CREATE TABLE `task_comments` (
 DROP TABLE IF EXISTS `memos`;
 CREATE TABLE `memos` (
     `id` BIGINT NOT NULL PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `title` VARCHAR(500),
     `content` LONGTEXT,
     `memo_type` VARCHAR(50) DEFAULT 'note',
@@ -135,6 +140,7 @@ CREATE TABLE `memos` (
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_memos_deleted_at` (`deleted_at`),
+    INDEX `idx_memos_user_id` (`user_id`),
     INDEX `idx_memos_created_at` (`created_at` DESC),
     INDEX `idx_memos_updated_at` (`updated_at` DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -145,11 +151,13 @@ CREATE TABLE `memos` (
 DROP TABLE IF EXISTS `task_notes`;
 CREATE TABLE `task_notes` (
     `id` BIGINT NOT NULL PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
     `title` VARCHAR(500),
     `content` LONGTEXT,
     `related_task_ids` JSON,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_task_notes_user_id` (`user_id`),
     INDEX `idx_task_notes_updated_at` (`updated_at` DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
