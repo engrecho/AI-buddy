@@ -98,11 +98,11 @@ CREATE TABLE `task_groups` (
 
 -- ============================================================
 -- 3. task_members（人员信息）
--- 注意：代码中使用 genId() 手动指定 ID，不使用自增
+-- 业务表，统一使用 AUTO_INCREMENT 主键（SKILL API 需要）
 -- ============================================================
 DROP TABLE IF EXISTS `task_members`;
 CREATE TABLE `task_members` (
-    `id` BIGINT NOT NULL PRIMARY KEY,
+    `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT NOT NULL,
     `name` VARCHAR(255) NOT NULL,
     `mis` VARCHAR(255),
@@ -142,7 +142,7 @@ CREATE TABLE `task_comments` (
 -- ============================================================
 DROP TABLE IF EXISTS `memos`;
 CREATE TABLE `memos` (
-    `id` BIGINT NOT NULL PRIMARY KEY,
+    `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT NOT NULL,
     `title` VARCHAR(500),
     `content` LONGTEXT,
@@ -204,7 +204,7 @@ CREATE TABLE `reading_items` (
 -- ============================================================
 DROP TABLE IF EXISTS `quick_notes`;
 CREATE TABLE `quick_notes` (
-    `id` BIGINT NOT NULL PRIMARY KEY,
+    `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT NOT NULL,
     `content` TEXT NOT NULL,
     `tags` TEXT,
