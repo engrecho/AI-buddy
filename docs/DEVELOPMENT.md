@@ -105,7 +105,7 @@ MySQL Query
 
 #### 1. Supabase 兼容层
 
-原项目基于 Supabase JS 客户端。为平滑过渡，前端通过 `src/lib/db.js` 自定义了兼容层，API 行为与原 `@supabase/supabase-js` 一致：
+项目最初基于 Supabase JS 客户端，后来迁移到自建后端。为保留前端代码，前端通过 `src/lib/db.js` 自定义了兼容层，API 行为与原 `@supabase/supabase-js` 一致：
 
 ```javascript
 const { data, error } = await supabase
@@ -117,6 +117,7 @@ const { data, error } = await supabase
 ```
 
 底层实现是把链式调用转换为 HTTP 请求，后端 Express 收到后解析查询参数并执行 SQL。
+`src/integrations/supabase/client.js` 仅作为兼容历史 import 路径，re-export 自 `src/lib/db.js`。
 
 #### 2. 后端认证与数据隔离
 
@@ -272,7 +273,11 @@ export const navItems = [
 
 ## API 端点
 
-所有业务端点都挂在 `/api/:table` 下，CRUD 行为与 Supabase PostgREST 类似。
+后端有两套接口：通用 CRUD（前端用）和 SKILL v1（buddy-skill 用）。
+
+### A. 通用 CRUD（前端用，挂在 `/api/:table`）
+
+CRUD 行为与 Supabase PostgREST 类似（实际上是为了兼容历史 import 路径）。鉴权用 JWT Cookie。
 
 | HTTP 方法 | 路径 | 用途 |
 |----------|------|------|
@@ -284,6 +289,26 @@ export const navItems = [
 | POST | `/api/auth/login` | 登录 |
 | POST | `/api/auth/register` | 注册 |
 | POST | `/api/auth/logout` | 登出 |
+
+### B. SKILL v1（外部工具用，挂在 `/api/v1/*`）
+
+供 `buddy-skill` 等外部工具使用。鉴权用 Header `X-API-Key: buddy_xxx...`。完整参考见 `buddy-skill/SKILL.md`。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/me` | 当前用户 |
+| GET / POST | `/api/v1/tasks` | 任务列表 / 创建 |
+| GET | `/api/v1/tasks/:id` | 任务详情 |
+| PATCH | `/api/v1/tasks/:id` | 更新任务 |
+| DELETE | `/api/v1/tasks/:id` | 删除任务（**必须** `?confirm=true`） |
+| POST | `/api/v1/tasks/organize` | 批量整理（默认 `dry_run=true`） |
+| GET | `/api/v1/task-groups` | 任务分组 |
+| GET / POST | `/api/v1/memos` | 备忘列表 / 创建 |
+| GET | `/api/v1/memos/:id` | 备忘详情 |
+| GET / POST | `/api/v1/reading` | 阅读列表 / 创建 |
+| GET | `/api/v1/reading/:id` | 阅读详情 |
+| GET / POST | `/api/v1/quick-notes` | 随记列表 / 创建 |
+| GET | `/api/v1/quick-notes/:id` | 随记详情 |
 
 ### 查询参数
 

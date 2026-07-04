@@ -190,11 +190,8 @@ buddy-skill/
 ├── lib/
 │   ├── client.js            # HTTP 客户端（封装所有 API 调用）
 │   ├── config.js            # 配置文件管理（~/.buddy-skill/config.json）
-│   └── prompts.js           # AI Prompt 模板 + 工具定义
+│   └── prompts.js           # AI Prompt 模板
 ├── tools/
-│   ├── tasks.js             # 任务工具（list/get/add/update/delete）
-│   ├── memos.js             # 备忘工具
-│   ├── reading.js           # 阅读收藏工具
 │   ├── organize.js          # 整理任务（含 plan-then-confirm）
 │   └── confirm.js           # 确认机制（格式化展示给用户）
 └── examples/

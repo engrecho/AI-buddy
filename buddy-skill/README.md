@@ -181,12 +181,11 @@ node index.js list-reading --starred
 
 1. 读取 `SKILL.md` 了解自己的身份、能力和安全边界
 2. 通过 `lib/client.js` 与 Buddy API 通信
-3. 调用 `tools/*.js` 中的工具函数
-4. 在执行破坏性操作前调用 `tools/confirm.js` 中的格式化函数
+3. 在执行破坏性操作前调用 `tools/confirm.js` 中的格式化函数展示计划
 
 ### Claude / GPT 加载示例
 
-把 `lib/prompts.js` 的内容作为 system prompt 注入，把 `tools/*.js` 注册为可调用的工具函数。
+把 `lib/prompts.js` 的内容作为 system prompt 注入；如需 function-calling，可直接调用 `lib/client.js` 暴露的方法（`listTasks` / `createTask` / `organizeTasks` 等）。
 
 ### 安全准则
 
@@ -267,11 +266,8 @@ buddy-skill/
 ├── lib/
 │   ├── client.js            # HTTP 客户端（封装所有 API 调用）
 │   ├── config.js            # 配置文件管理（~/.buddy-skill/config.json）
-│   └── prompts.js           # AI Prompt 模板 + 工具定义
+│   └── prompts.js           # AI Prompt 模板
 ├── tools/
-│   ├── tasks.js             # 任务工具（list/get/add/update/delete）
-│   ├── memos.js             # 备忘工具
-│   ├── reading.js           # 阅读收藏工具
 │   ├── organize.js          # 整理任务（含 plan-then-confirm）
 │   └── confirm.js           # 确认机制（格式化展示给用户）
 └── examples/

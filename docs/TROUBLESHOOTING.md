@@ -148,7 +148,7 @@ bash /www/wwwroot/你的域名/deploy/pull.sh
 
 ### 8. yarn install 报「getaddrinfo ENOTFOUND r.npm.sankuai.com」
 
-**原因**：Yarn registry 指向了内网源。
+**原因**：Yarn registry 指向了美团内网源。
 
 **修复**：
 
@@ -305,3 +305,59 @@ grep ' 5[0-9][0-9] ' /www/wwwlogs/你的域名.log | tail
 2. 查看 Nginx 错误日志
 3. 查看 MySQL 错误日志
 4. 提交 GitHub Issue：<https://github.com/engrecho/AI-buddy/issues>
+
+## 已知问题与坑（V61+）
+
+> 这些问题都已修复，新部署同样需要注意。
+
+### 1. yarn install 报「getaddrinfo ENOTFOUND r.npm.sankuai.com」
+
+**原因**：Yarn registry 指向了美团内网源 `r.npm.sankuai.com`，腾讯云服务器无法访问。
+
+**修复**：
+```bash
+rm -f yarn.lock
+yarn config set registry https://registry.npmmirror.com
+yarn install
+```
+
+### 2. MySQL `TEXT` 列不能有默认值
+
+MySQL 严格模式不允许 `TEXT DEFAULT ''`。已修复：表里用 `TEXT`（允许 NULL）。
+
+### 3. MySQL 触发器需要 SUPER 权限
+
+宝塔的 MySQL 用户没有 SUPER 权限，无法创建触发器。已修复：`updated_at` 由后端应用层在 PATCH 路由手动更新（`server/index.js` 的 `TABLES_WITH_UPDATED_AT`）。
+
+### 4. ISO 8601 日期不被 MySQL 接受
+
+前端发 `2026-07-01T17:06:28.081Z`，MySQL DATETIME 要 `2026-07-01 17:06:28`。已修复：后端 `prepareValue` + `mysqlDatetimeToIso` 自动转换。
+
+### 5. 路由顺序导致 `/api/health` 被当作表名
+
+Express 按顺序匹配路由，`/api/:table` 会吞掉 `/api/health`。已修复：`/api/health` 定义在 `/api/:table` 之前。
+
+### 6. 宝塔建站时自动创建空目录
+
+宝塔添加网站时会预创建 `/www/wwwroot/你的域名` 目录，导致 `git clone` 失败。已修复：WebHook 脚本 `deploy/pull.sh` 检测到目录存在但非 git 仓库时先 `rm -rf` 再 clone。
+
+### 7. GitHub 访问慢（国内服务器通病）
+
+腾讯云到 GitHub 网络差，git clone 经常超时。已修复：服务器 remote 走 `gh-proxy.com` 代理。
+
+```bash
+# 在服务器上设置 remote（必须用 gh-proxy 代理）
+git remote set-url origin https://gh-proxy.com/https://github.com/engrecho/AI-buddy.git
+```
+
+### 8. PM2 进程名歧义
+
+线上实际 PM2 进程名是 `ai-buddy-api`（与 `ecosystem.config.cjs` 一致）。部署脚本 `deploy/pull.sh` 用 `ai-buddy-api` 重启。
+
+### 9. 服务器 git remote 指向老仓
+
+如果服务器 `git remote -v` 显示 `engrecho/ai-work-buddy`（老仓名），改为 `engrecho/AI-buddy`（当前项目名），同时走 `gh-proxy.com` 代理（见坑 7）。
+
+### 10. 飞书 wiki 中文乱码
+
+通过 lark-cli 写飞书 docx 时，如果用 Python `json.dumps(content)` 默认 `ensure_ascii=True`，会把 UTF-8 中文转成 `\u4e5d\u3001...` 字面字符串。修法：`json.dumps(content, ensure_ascii=False)`。

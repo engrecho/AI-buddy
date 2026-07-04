@@ -112,7 +112,7 @@ AI-buddy/
 │   ├── README.md             # 开发者向辅助文档
 │   ├── index.js              # CLI 入口
 │   ├── lib/                  # HTTP 客户端、配置、Prompt
-│   ├── tools/                # 任务/备忘/阅读/整理工具
+│   ├── tools/                # 整理 + 确认（plan-then-confirm）
 │   └── examples/             # 用法示例
 ├── docs/                      # 文档
 ├── ecosystem.config.cjs       # PM2 配置
@@ -167,6 +167,14 @@ AI-buddy/
 3. 分享：把项目推荐给朋友、写使用体验
 
 详细流程见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)（待补充）。
+
+## 变更历史
+
+重大变更的完整记录：
+
+- **V61（2026-06-30）**：去美团化 + 数据库迁移到自建 MySQL + Express。详细：[docs/V61-20260630-2300.md](docs/V61-20260630-2300.md)
+- **v1.1（2026-07-04）**：SKILL v1 接口补全（新增 `GET /api/v1/:table/:id`、`POST` 改 201、新增 `list-task-groups` CLI）。提交：`3adec62`
+- 完整 git log：`git log --oneline`
 
 ## 许可证
 
