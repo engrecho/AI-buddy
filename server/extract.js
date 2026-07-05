@@ -295,3 +295,80 @@ export async function parseAndDownload(input) {
     });
   });
 }
+
+/**
+ * 安全解析 offline_path：必须是 OUTPUT_ROOT 的子目录
+ * 防止路径穿越攻击（../../../etc/passwd）
+ */
+export function resolveOfflinePath(offlinePath) {
+  if (!offlinePath) return null;
+  const root = path.resolve(OUTPUT_ROOT);
+  const resolved = path.resolve(offlinePath);
+  // 必须以 root + path.sep 开头
+  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+    return null;
+  }
+  return resolved;
+}
+
+/**
+ * 列出离线目录下的所有可下载文件。
+ * 返回 { ok, dir, files: [{ name, category, size, mtime, ext, download_url, preview_url }] }
+ */
+export async function listOfflineFiles(offlinePath) {
+  const dir = resolveOfflinePath(offlinePath);
+  if (!dir || !fs.existsSync(dir)) {
+    return { ok: false, code: 404, message: '离线目录不存在' };
+  }
+  const stat = fs.statSync(dir);
+  if (!stat.isDirectory()) {
+    return { ok: false, code: 400, message: 'offline_path 不是目录' };
+  }
+
+  const files = fs.readdirSync(dir, { withFileTypes: true });
+  const fileInfos = [];
+  const baseName = path.basename(dir);
+  for (const f of files) {
+    if (f.isDirectory()) continue; // 跳过子目录（暂不递归）
+    if (f.name.startsWith('._') || f.name === '.DS_Store') continue; // 跳过 macOS 噪音
+    const full = path.join(dir, f.name);
+    try {
+      const s = fs.statSync(full);
+      const ext = path.extname(f.name).toLowerCase().slice(1);
+      let category = 'other';
+      if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext)) category = 'video';
+      else if (['mp3', 'm4a', 'aac', 'ogg', 'wav'].includes(ext)) category = 'audio';
+      else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) category = 'image';
+      else if (ext === 'md' || ext === 'markdown') category = 'markdown';
+      else if (f.name === 'info.json') category = 'info';
+
+      const encodedDir = encodeURIComponent(baseName);
+      const encodedName = encodeURIComponent(f.name);
+      fileInfos.push({
+        name: f.name,
+        category,
+        size: s.size,
+        mtime: s.mtime.toISOString(),
+        ext,
+        download_url: `/api/reading-files/${encodedDir}/${encodedName}`,
+        preview_url: `/api/reading-files/${encodedDir}/${encodedName}?download=0`,
+      });
+    } catch (e) {
+      // 单个文件 stat 失败不影响整体
+      continue;
+    }
+  }
+  // 排序：视频/音频/封面/图片/MD/info 在前
+  const order = { video: 0, audio: 1, image: 2, markdown: 3, info: 4, other: 5 };
+  fileInfos.sort((a, b) => (order[a.category] ?? 9) - (order[b.category] ?? 9));
+  return { ok: true, dir: baseName, files: fileInfos };
+}
+
+/**
+ * 重新走 extract+download 流程（用于"重新下载"按钮）
+ * @param {string} input 分享文本/URL
+ * @returns {Promise<{code, message, host?, vid?, offline_path?, stderr?}>}
+ */
+export async function redownload(input) {
+  return parseAndDownload(input);
+}

@@ -3,6 +3,8 @@ import {
   Plus, BookOpen, ExternalLink, Check, Loader2, Sparkles,
   Star, Tag, Trash2, Menu, X, ChevronDown, AlertTriangle,
   Wand2, Download, PlayCircle, FileText, Link as LinkIcon,
+  Pencil, Copy, FolderOpen, RefreshCw, FileVideo, FileImage,
+  FileAudio, FileCode2, ChevronRight, Eye,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { genId } from "@/lib/utils";
@@ -333,6 +335,134 @@ const ReadingPage = () => {
     await supabase.from("reading_items").update({ deleted_at: now }).eq("id", id);
     setDeleteConfirmId(null);
     fetchItems();
+  };
+
+  // ── 编辑 ────────────────────────────────────────────────────────
+  const [editingItem, setEditingItem] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const handleStartEdit = (item) => {
+    setEditingItem(item);
+    setEditForm({
+      url: item.url || "",
+      title: item.title || "",
+      summary: item.summary || "",
+      cover_url: item.cover_url || "",
+      platform: item.platform || "web",
+      category: item.category || "work",
+      is_read: !!item.is_read,
+      is_starred: !!item.is_starred,
+      is_offline: !!item.is_offline,
+      offline_path: item.offline_path || "",
+      tags: Array.isArray(item.tags) ? item.tags : [],
+    });
+  };
+  const handleSaveEdit = async () => {
+    if (!editingItem) return;
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("reading_items")
+        .update(editForm)
+        .eq("id", editingItem.id);
+      if (error) throw error;
+      setEditingItem(null);
+      fetchItems();
+    } catch (e) {
+      alert(`保存失败：${e.message}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+  const toggleEditTag = (tagId) => {
+    setEditForm((prev) => ({
+      ...prev,
+      tags: prev.tags.includes(tagId)
+        ? prev.tags.filter((id) => id !== tagId)
+        : [...prev.tags, tagId],
+    }));
+  };
+
+  // ── 复制链接 ────────────────────────────────────────────────────
+  const [copyToast, setCopyToast] = useState("");
+  const handleCopyUrl = async (item) => {
+    const text = item.url || "";
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // fallback：临时 textarea
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopyToast(`已复制：${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`);
+      setTimeout(() => setCopyToast(""), 2500);
+    } catch (e) {
+      setCopyToast(`复制失败：${e.message}`);
+      setTimeout(() => setCopyToast(""), 2500);
+    }
+  };
+
+  // ── 离线文件查看/下载 ────────────────────────────────────────────
+  const [offlineFilesItem, setOfflineFilesItem] = useState(null);
+  const [offlineFilesList, setOfflineFilesList] = useState([]);
+  const [offlineFilesLoading, setOfflineFilesLoading] = useState(false);
+  const [redownloading, setRedownloading] = useState(false);
+
+  const openOfflineFiles = async (item) => {
+    setOfflineFilesItem(item);
+    setOfflineFilesList([]);
+    setOfflineFilesLoading(true);
+    try {
+      const res = await fetch(`/api/reading/${item.id}/files`, { credentials: "include" });
+      const json = await res.json();
+      if (json.error) {
+        alert(`加载失败：${json.error.message}`);
+        return;
+      }
+      setOfflineFilesList(json.data?.files || []);
+    } catch (e) {
+      alert(`加载失败：${e.message}`);
+    } finally {
+      setOfflineFilesLoading(false);
+    }
+  };
+
+  const handleRedownload = async () => {
+    if (!offlineFilesItem) return;
+    setRedownloading(true);
+    try {
+      const res = await fetch("/api/extract/redownload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ input: offlineFilesItem.url }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message);
+      if (json.data?.code === 200) {
+        // 刷新数据库 offline_path
+        await supabase
+          .from("reading_items")
+          .update({ is_offline: true, offline_path: json.data.offline_path })
+          .eq("id", offlineFilesItem.id);
+        await openOfflineFiles({ ...offlineFilesItem, offline_path: json.data.offline_path });
+        fetchItems();
+      } else {
+        throw new Error(json.data?.message || "重新下载失败");
+      }
+    } catch (e) {
+      alert(`重新下载失败：${e.message}`);
+    } finally {
+      setRedownloading(false);
+    }
   };
 
   // ── 过滤逻辑 ──────────────────────────────────────────────────────
@@ -688,6 +818,9 @@ const ReadingPage = () => {
                 onToggleRead={() => toggleRead(item)}
                 onToggleStar={() => toggleStar(item)}
                 onDelete={() => setDeleteConfirmId(item.id)}
+                onEdit={() => handleStartEdit(item)}
+                onCopy={() => handleCopyUrl(item)}
+                onOpenFiles={() => openOfflineFiles(item)}
               />
             ))}
           </div>
@@ -725,9 +858,280 @@ const ReadingPage = () => {
           )}
         </div>
       </div>
+
+      {/* 复制反馈 toast（右下角浮动） */}
+      {copyToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2">
+          <Check className="h-4 w-4 text-green-400 flex-shrink-0" />
+          <span className="truncate">{copyToast}</span>
+        </div>
+      )}
+
+      {/* 编辑 Dialog */}
+      <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
+        <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90vh] max-h-screen overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4" />
+              编辑文章
+            </DialogTitle>
+          </DialogHeader>
+          {editingItem && (
+            <div className="space-y-4 mt-4">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">文章链接</label>
+                <Input
+                  type="url"
+                  value={editForm.url}
+                  onChange={(e) => setEditForm({ ...editForm, url: e.target.value })}
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">标题</label>
+                <Input
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  placeholder="文章标题"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">摘要</label>
+                <Textarea
+                  value={editForm.summary}
+                  onChange={(e) => setEditForm({ ...editForm, summary: e.target.value })}
+                  placeholder="文章摘要"
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">封面 URL</label>
+                  <Input
+                    value={editForm.cover_url}
+                    onChange={(e) => setEditForm({ ...editForm, cover_url: e.target.value })}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">平台</label>
+                  <select
+                    value={editForm.platform}
+                    onChange={(e) => setEditForm({ ...editForm, platform: e.target.value })}
+                    className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  >
+                    {Object.entries(PLATFORM_META).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">分类 (category)</label>
+                <Input
+                  value={editForm.category}
+                  onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                  placeholder="work / article / video ..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_read}
+                    onChange={(e) => setEditForm({ ...editForm, is_read: e.target.checked })}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                  />
+                  <span className="text-sm">已读</span>
+                </label>
+                <label className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_starred}
+                    onChange={(e) => setEditForm({ ...editForm, is_starred: e.target.checked })}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                  />
+                  <span className="text-sm">星标</span>
+                </label>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">离线路径（仅查看/修改）</label>
+                <Input
+                  value={editForm.offline_path}
+                  onChange={(e) => setEditForm({ ...editForm, offline_path: e.target.value })}
+                  placeholder="/www/wwwroot/.../gv_downloads/<平台>-<vid>-<标题>"
+                  className="font-mono text-xs"
+                />
+                {editForm.is_offline ? (
+                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <Check className="h-3 w-3" />已离线，修改路径需自行保证真实存在
+                  </p>
+                ) : (
+                  <label className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_offline}
+                      onChange={(e) => setEditForm({ ...editForm, is_offline: e.target.checked })}
+                      className="h-3.5 w-3.5 rounded border-gray-300"
+                    />
+                    标记为已离线
+                  </label>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">标签</label>
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleEditTag(tag.id)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                        editForm.tags?.includes(tag.id) ? "ring-2 ring-offset-1" : "opacity-60 hover:opacity-100"
+                      }`}
+                      style={tagStyle(tag.color)}
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                  {tags.length === 0 && (
+                    <span className="text-xs text-gray-400">暂无标签</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setEditingItem(null)}>取消</Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit}
+                  className="border-0"
+                  style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}
+                >
+                  {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  保存
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 离线文件 Dialog */}
+      <Dialog open={!!offlineFilesItem} onOpenChange={(open) => { if (!open) setOfflineFilesItem(null); }}>
+        <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90vh] max-h-screen overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderOpen className="h-4 w-4" />
+              离线文件 · {offlineFilesItem?.title?.slice(0, 30)}{offlineFilesItem?.title && offlineFilesItem.title.length > 30 ? "..." : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {offlineFilesItem && (
+            <div className="space-y-3 mt-2">
+              <div className="text-xs text-gray-500 font-mono bg-gray-50 px-3 py-2 rounded break-all">
+                {offlineFilesItem.offline_path}
+              </div>
+
+              {offlineFilesLoading ? (
+                <div className="flex items-center justify-center py-8 text-gray-400">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  加载中...
+                </div>
+              ) : offlineFilesList.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  目录下没有可下载的文件
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
+                  {offlineFilesList.map((f) => (
+                    <OfflineFileRow key={f.name} file={f} />
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100">
+                <button
+                  onClick={handleRedownload}
+                  disabled={redownloading}
+                  className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                >
+                  {redownloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  重新下载
+                </button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOfflineFilesItem(null)}
+                >关闭</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
+// ── 子组件：离线文件行 ──────────────────────────────────────────────
+const FILE_CATEGORY_META = {
+  video:    { label: '视频',   Icon: FileVideo, color: '#fe2c55' },
+  audio:    { label: '音频',   Icon: FileAudio, color: '#8b5cf6' },
+  image:    { label: '图片',   Icon: FileImage, color: '#06b6d4' },
+  markdown: { label: '文章',   Icon: FileText,  color: '#07c960' },
+  info:     { label: '元信息', Icon: FileCode2, color: '#6b7280' },
+  other:    { label: '其他',   Icon: FileText,  color: '#9ca3af' },
+};
+
+function OfflineFileRow({ file }) {
+  const meta = FILE_CATEGORY_META[file.category] || FILE_CATEGORY_META.other;
+  const Icon = meta.Icon;
+  const sizeKB = (file.size / 1024).toFixed(1);
+  const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+  const sizeStr = file.size > 1024 * 1024 ? `${sizeMB} MB` : `${sizeKB} KB`;
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors">
+      <div
+        className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
+        style={{ backgroundColor: meta.color + "22", color: meta.color }}
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-gray-900 truncate">{file.name}</div>
+        <div className="text-xs text-gray-500 flex items-center gap-2">
+          <span>{meta.label}</span>
+          <span>·</span>
+          <span>{sizeStr}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {/* 预览按钮（图片/视频/音频/MD 支持新标签页打开） */}
+        {['image', 'video', 'audio', 'markdown', 'info'].includes(file.category) && (
+          <a
+            href={file.preview_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
+            title="新标签页预览"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </a>
+        )}
+        {/* 下载按钮 */}
+        <a
+          href={file.download_url}
+          className="p-1.5 rounded text-gray-400 hover:text-green-600 hover:bg-green-50"
+          title="下载文件"
+          download={file.name}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </a>
+      </div>
+    </div>
+  );
+}
 
 // ── 子组件：左侧导航项 ────────────────────────────────────────────
 function SideItem({ active, onClick, label, count, icon, color }) {
@@ -749,7 +1153,7 @@ function SideItem({ active, onClick, label, count, icon, color }) {
 }
 
 // ── 子组件：文章卡片 ──────────────────────────────────────────────
-function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete }) {
+function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles }) {
   const pm = platformMeta(item.platform);
   const PlatformIcon = pm.Icon;
   return (
@@ -892,14 +1296,43 @@ function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete }) {
           {new Date(item.created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
         </span>
 
-        {/* 删除 */}
-        <button
-          onClick={onDelete}
-          className="flex-shrink-0 p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 active:bg-red-100 transition-colors"
-          title="删除"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        {/* 操作按钮组 */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* 复制链接 */}
+          <button
+            onClick={onCopy}
+            className="p-1 rounded text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
+            title="复制链接"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+          {/* 编辑 */}
+          <button
+            onClick={onEdit}
+            className="p-1 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 transition-colors"
+            title="编辑"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          {/* 离线文件查看/下载（仅当离线时显示） */}
+          {item.is_offline && (
+            <button
+              onClick={onOpenFiles}
+              className="p-1 rounded text-gray-300 hover:text-green-500 hover:bg-green-50 active:bg-green-100 transition-colors"
+              title="查看/下载离线文件"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* 删除 */}
+          <button
+            onClick={onDelete}
+            className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 active:bg-red-100 transition-colors"
+            title="删除"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       </div>
     </div>

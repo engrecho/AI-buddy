@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import {
   pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS, PUBLIC_TABLES
@@ -13,7 +14,7 @@ import {
   updateUserProfile, changePassword,
   createApiKeyForUser, listApiKeysForUser, revokeApiKey, getUserByApiKey
 } from './auth.js';
-import { parseShare, parseAndDownload } from './extract.js';
+import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload } from './extract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -68,6 +69,155 @@ app.post('/api/extract/download', authMiddleware, async (req, res) => {
     return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
   } catch (err) {
     console.error('extract/download error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 重新下载（基于已有的 input 重新走 extract+download 流程）
+app.post('/api/extract/redownload', authMiddleware, async (req, res) => {
+  const input = (req.body?.input || req.body?.text || '').toString();
+  if (!input) {
+    return res.json({ data: null, error: { message: '缺少 input 字段' } });
+  }
+  try {
+    const result = await redownload(input);
+    return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
+  } catch (err) {
+    console.error('extract/redownload error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 列出某条 reading 的离线文件
+app.get('/api/reading/:id/files', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 必须是数字' } });
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, offline_path, is_offline FROM reading_items WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    const row = rows[0];
+    if (!row) {
+      return res.json({ data: null, error: { message: '记录不存在或无权限' } });
+    }
+    if (!row.is_offline || !row.offline_path) {
+      return res.json({ data: { ok: true, dir: null, files: [], message: '该文章未离线' } });
+    }
+    const result = await listOfflineFiles(row.offline_path);
+    if (!result.ok) {
+      return res.json({ data: result, error: { message: result.message } });
+    }
+    return res.json({ data: result, error: null });
+  } catch (err) {
+    console.error('reading/files error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 下载/预览某个离线文件（路径 /api/reading-files/:dirName/:fileName）
+// 鉴权：必须能查到属于该用户，且 offline_path 等于 dirName
+app.get('/api/reading-files/:dirName/:fileName', authMiddleware, async (req, res) => {
+  const { dirName, fileName } = req.params;
+  // dirName 形如 "<host>-<vid>-<标题>"，防穿越
+  if (!dirName || !fileName || /[/\\]/.test(dirName) || /[/\\]/.test(fileName)) {
+    return res.status(400).json({ data: null, error: { message: '非法路径' } });
+  }
+  try {
+    // 查 user_id 关联的 reading_items，看是否存在 offline_path 包含 dirName
+    const [rows] = await pool.query(
+      'SELECT id, offline_path FROM reading_items WHERE user_id = ? AND is_offline = 1 AND offline_path LIKE ?',
+      [req.user.id, `%${dirName}`]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ data: null, error: { message: '未找到对应离线目录' } });
+    }
+    // 找到匹配的 reading_item，用它真正的 offline_path 拼文件
+    const matched = rows[0];
+    const safePath = resolveOfflinePath(matched.offline_path);
+    if (!safePath) {
+      return res.status(400).json({ data: null, error: { message: '路径越界' } });
+    }
+    const filePath = path.join(safePath, fileName);
+    // 再次校验 filePath 仍然在 safePath 内
+    if (!filePath.startsWith(safePath + path.sep)) {
+      return res.status(400).json({ data: null, error: { message: '非法文件路径' } });
+    }
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ data: null, error: { message: '文件不存在' } });
+    }
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      return res.status(400).json({ data: null, error: { message: '不是文件' } });
+    }
+    const wantDownload = req.query.download !== '0';
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Last-Modified', stat.mtime.toUTCString());
+    if (wantDownload) {
+      // 下载：Content-Disposition: attachment
+      const encoded = encodeURIComponent(fileName);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encoded}`);
+    } else {
+      // 预览：按 mime type 发送
+      const ext = path.extname(fileName).toLowerCase();
+      const mime = {
+        '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+        '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+        '.gif': 'image/gif', '.webp': 'image/webp',
+        '.md': 'text/markdown; charset=utf-8',
+        '.json': 'application/json',
+      }[ext] || 'application/octet-stream';
+      res.setHeader('Content-Type', mime);
+    }
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    console.error('reading-files error:', err);
+    res.status(500).json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 更新 reading_items（编辑用）
+app.patch('/api/reading/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 必须是数字' } });
+  }
+  const ALLOWED_FIELDS = [
+    'url', 'title', 'summary', 'cover_url', 'platform',
+    'category', 'is_read', 'is_starred', 'is_offline', 'offline_path',
+    'tags',
+  ];
+  const updates = {};
+  for (const [k, v] of Object.entries(req.body || {})) {
+    if (ALLOWED_FIELDS.includes(k)) updates[k] = v;
+  }
+  if (Object.keys(updates).length === 0) {
+    return res.json({ data: null, error: { message: '没有可更新的字段' } });
+  }
+  try {
+    // 准备 SQL：动态拼 SET
+    const cols = Object.keys(updates);
+    const values = cols.map((c) => {
+      // 复用通用 prepareValue
+      if (BOOLEAN_COLUMNS.reading_items.includes(c)) {
+        return v => v ? 1 : 0;
+      }
+      if (JSON_COLUMNS.reading_items.includes(c) && typeof updates[c] === 'object') {
+        return JSON.stringify(updates[c]);
+      }
+      return updates[c];
+    });
+    // 上面闭包写错，改成直接用 prepareValue
+    const setClause = cols.map((c) => `\`${c}\` = ?`).join(', ');
+    const preparedValues = cols.map((c) => prepareValue('reading_items', c, updates[c]));
+    const sql = `UPDATE reading_items SET ${setClause} WHERE id = ? AND user_id = ?`;
+    await pool.query(sql, [...preparedValues, id, req.user.id]);
+    return res.json({ data: { success: true }, error: null });
+  } catch (err) {
+    console.error('reading PATCH error:', err);
     return res.json({ data: null, error: { message: err.message } });
   }
 });
