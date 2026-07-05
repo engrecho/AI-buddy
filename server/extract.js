@@ -15,10 +15,9 @@ const SKILL_DIR =
   process.env.GV_SKILL_DIR ||
   path.join(os.homedir(), '.workbuddy', 'skills', 'greenvideo-extract');
 
-// Node 运行时：优先受管版本
-const NODE_BIN =
-  process.env.GV_NODE ||
-  '/Users/jaylon/.workbuddy/binaries/node/versions/22.22.2/bin/node';
+// Node 运行时：默认用当前进程自己的 Node（process.execPath），保证跨平台一致
+// 用户可通过环境变量 GV_NODE 强制覆盖
+const NODE_BIN = process.env.GV_NODE || process.execPath;
 
 // 输出根目录：默认 ./gv_downloads，相对当前进程工作目录
 const OUTPUT_ROOT = process.env.GV_OUTPUT || path.join(process.cwd(), 'gv_downloads');

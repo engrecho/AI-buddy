@@ -135,7 +135,7 @@ node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --jso
 node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本或URL>"
 # 也支持环境变量：
 #   GV_OUTPUT=<输出根目录>   默认 ./gv_downloads
-#   GV_NODE=<node 路径>      默认 /Users/jaylon/.workbuddy/binaries/node/versions/22.22.2/bin/node
+#   GV_NODE=<node 路径>      默认 process.execPath（当前进程 Node）
 ```
 
 ### 解析结果结构（`--json` 模式，stdout 用 `__GV_JSON_BEGIN__` / `__GV_JSON_END__` marker 分隔）
