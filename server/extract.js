@@ -340,11 +340,13 @@ export function resolveOfflinePath(offlinePath) {
   // 兼容末尾斜杠
   const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
 
-  let resolved = path.resolve(String(offlinePath));
-
-  // 如果是 basename（不含分隔符），拼到 OUTPUT_ROOT 下
-  if (!String(offlinePath).includes(path.sep) && !String(offlinePath).includes('/')) {
-    resolved = path.join(root, resolved);
+  let resolved;
+  if (path.isAbsolute(offlinePath)) {
+    // 绝对路径：直接 resolve，不拼接
+    resolved = path.resolve(offlinePath);
+  } else {
+    // 相对 / basename：拼到 OUTPUT_ROOT 下
+    resolved = path.join(root, offlinePath);
   }
 
   // 必须以 root + sep 开头，或等于 root
