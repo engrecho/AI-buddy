@@ -1,0 +1,19 @@
+{
+  "name": "AI-Buddy",
+  "short_name": "AI-Buddy",
+  "description": "碎片化信息管理：任务、备忘、阅读、随记——一处收纳，互相关联。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#bbea3b",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

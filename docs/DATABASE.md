@@ -41,7 +41,7 @@
 | `quick_notes` | 随记 | AUTO_INCREMENT | 否 |
 
 **主键约定**：
-- 早期版本统一用「手写 bigint（`Date.now()` 时间戳）」；V61 迁移到 MySQL 后，POST 接口要求 DB 给出 `insertId`，因此部分表改为 `AUTO_INCREMENT`（详见 `deploy/migrate-add-auto-increment.sql`）
+- 早期版本统一用「手写 bigint（`Date.now()` 时间戳）」；迁移到 MySQL 后，POST 接口要求 DB 给出 `insertId`，因此部分表改为 `AUTO_INCREMENT`（详见 `deploy/migrate-add-auto-increment.sql`）
 - 业务代码用 `src/lib/utils.js` 的 `genId()` 生成时间戳大整数
 
 **用户隔离**：除 `users` 表外，所有业务表都带 `user_id`。后端 `parseFilters` 自动注入 `WHERE user_id = ?` 条件，前端无法绕过。

@@ -1,31 +1,50 @@
 // 社媒内容解析与下载服务
-// 封装 ~/.workbuddy/skills/greenvideo-extract/scripts/ 下的两个脚本：
+// 封装 ExtractVideoSkill(独立 SKILL)scripts/ 下的两个脚本：
 //   - video_extract.cjs --json    解析分享文本/URL，返回 {title, host, vid, items, ...}
 //   - download_videos.cjs              解析 + 下载所有资源到本地目录
 //
-// 注意：所有 spawn 都加 60s 超时；解析失败要原样返回错误，不要吞。
+// 注意：所有 spawn 都加 90s 超时；解析失败要原样返回错误，不要吞。
+//
+// 默认保存地址优先级：
+//   1) 用户级 user_settings(offline_output_root,需登录)
+//   2) 环境变量 GV_OUTPUT
+//   3) 项目内 data/offline/
 
 import { execFile, spawn } from 'child_process';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-// 技能目录：优先用环境变量；找不到则用默认 ~/.workbuddy/skills/greenvideo-extract
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 技能目录：优先用环境变量；找不到则用默认 ~/.all-platform-video-extract
 const SKILL_DIR =
   process.env.GV_SKILL_DIR ||
-  path.join(os.homedir(), '.workbuddy', 'skills', 'greenvideo-extract');
+  path.join(os.homedir(), '.all-platform-video-extract');
 
 // Node 运行时：默认用当前进程自己的 Node（process.execPath），保证跨平台一致
 // 用户可通过环境变量 GV_NODE 强制覆盖
 const NODE_BIN = process.env.GV_NODE || process.execPath;
 
-// 输出根目录：默认 ./gv_downloads，相对当前进程工作目录
-const OUTPUT_ROOT = process.env.GV_OUTPUT || path.join(process.cwd(), 'gv_downloads');
+// 输出根目录(默认):<项目根>/data/offline
+const DEFAULT_OUTPUT_ROOT = path.resolve(__dirname, '..', 'data', 'offline');
 
 const EXTRACT_SCRIPT = path.join(SKILL_DIR, 'scripts', 'video_extract.cjs');
 const DOWNLOAD_SCRIPT = path.join(SKILL_DIR, 'scripts', 'download_videos.cjs');
 
 const SPAWN_TIMEOUT_MS = 90 * 1000; // 90s
+
+/**
+ * 解析最终的输出根目录
+ * @param {string} [userSetting] - 用户在 user_settings 表中保存的 offline_output_root
+ */
+export function resolveOutputRoot(userSetting) {
+  if (userSetting && userSetting.trim()) return userSetting.trim();
+  if (process.env.GV_OUTPUT) return process.env.GV_OUTPUT;
+  return DEFAULT_OUTPUT_ROOT;
+}
 
 function log(...args) {
   if (process.env.DEBUG) console.log('[extract]', ...args);
@@ -54,7 +73,7 @@ function execWithTimeout(bin, args, opts = {}) {
 }
 
 /**
- * 把 greenvideo 解析出来的 host 字符串映射成 AI-buddy 的 platform 标识。
+ * 把 ExtractVideoSkill 解析出来的 host 字符串映射成 AI-buddy 的 platform 标识。
  * platform 取值约定：
  *   douyin / kuaishou / bilibili / xiaohongshu / wechat /
  *   youtube / tiktok / weibo / xigua / zhihu / other
@@ -98,7 +117,7 @@ export function extractUrl(text) {
 
 /**
  * 去掉 HTML 标签 + 解码常见 HTML 实体。
- * 用于清洗 greenvideo 抽取出来的「公众号原始 HTML 标题」等脏数据。
+ * 用于清洗 ExtractVideoSkill 抽取出来的「公众号原始 HTML 标题」等脏数据。
  * 例：`<span class="js_title_inner">极空间重磅更新</span>` -> `极空间重磅更新`
  */
 export function stripHtml(s) {
@@ -147,7 +166,7 @@ export async function parseShare(input) {
   if (!fs.existsSync(EXTRACT_SCRIPT)) {
     return {
       code: 500,
-      message: `未找到 extract 脚本：${EXTRACT_SCRIPT}。请确认已安装 greenvideo-extract skill。`,
+      message: `未找到 extract 脚本：${EXTRACT_SCRIPT}。请确认已安装 ExtractVideoSkill(默认位置 ${SKILL_DIR})。`,
     };
   }
 
@@ -233,7 +252,7 @@ export async function parseShare(input) {
   const hasVideo = items.some((i) => i.fileType === 'video' && !/markdown/i.test(i.quality || ''));
   const hasMarkdown = Boolean(mdText);
 
-  // 清洗 title：greenvideo 直接把公众号原始 HTML 塞回来（带 <span class=...>）
+  // 清洗 title：ExtractVideoSkill 直接把公众号原始 HTML 塞回来（带 <span class=...>）
   const rawTitle = data.displayTitle || data.title || '';
   const cleanTitle = stripHtml(rawTitle);
 
@@ -258,7 +277,7 @@ export async function parseShare(input) {
  * 解析并下载到 server 端本地目录。
  * 完成后返回离线路径（gv_downloads/<平台>-<vid>-<标题>/）。
  */
-export async function parseAndDownload(input) {
+export async function parseAndDownload(input, userSetting) {
   if (!input || !String(input).trim()) {
     return { code: 400, message: 'input 不能为空' };
   }
@@ -270,14 +289,15 @@ export async function parseAndDownload(input) {
     };
   }
 
-  fs.mkdirSync(OUTPUT_ROOT, { recursive: true });
+  const outputRoot = resolveOutputRoot(userSetting);
+  fs.mkdirSync(outputRoot, { recursive: true });
 
   return new Promise((resolve) => {
     let settled = false;
     let stdout = '';
     let stderr = '';
     const child = spawn(NODE_BIN, [DOWNLOAD_SCRIPT, input], {
-      env: { ...process.env, GV_OUTPUT: OUTPUT_ROOT, GV_NODE: NODE_BIN },
+      env: { ...process.env, GV_OUTPUT: outputRoot, GV_NODE: NODE_BIN },
     });
     child.stdout.on('data', (b) => { stdout += b.toString(); });
     child.stderr.on('data', (b) => { stderr += b.toString(); });
@@ -334,9 +354,9 @@ export async function parseAndDownload(input) {
  *   - 子目录 basename（落库形态）：拼回 OUTPUT_ROOT 后再校验
  * 防止路径穿越攻击（../../../etc/passwd）。
  */
-export function resolveOfflinePath(offlinePath) {
+export function resolveOfflinePath(offlinePath, userSetting) {
   if (!offlinePath) return null;
-  const root = path.resolve(OUTPUT_ROOT);
+  const root = path.resolve(resolveOutputRoot(userSetting));
   // 兼容末尾斜杠
   const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
 
@@ -360,8 +380,8 @@ export function resolveOfflinePath(offlinePath) {
  * 列出离线目录下的所有可下载文件。
  * 返回 { ok, dir, files: [{ name, category, size, mtime, ext, download_url, preview_url }] }
  */
-export async function listOfflineFiles(offlinePath) {
-  const dir = resolveOfflinePath(offlinePath);
+export async function listOfflineFiles(offlinePath, userSetting) {
+  const dir = resolveOfflinePath(offlinePath, userSetting);
   if (!dir || !fs.existsSync(dir)) {
     return { ok: false, code: 404, message: '离线目录不存在' };
   }
@@ -414,6 +434,6 @@ export async function listOfflineFiles(offlinePath) {
  * @param {string} input 分享文本/URL
  * @returns {Promise<{code, message, host?, vid?, offline_path?, stderr?}>}
  */
-export async function redownload(input) {
-  return parseAndDownload(input);
+export async function redownload(input, userSetting) {
+  return parseAndDownload(input, userSetting);
 }

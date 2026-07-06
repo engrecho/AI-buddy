@@ -16,6 +16,7 @@ import {
   createApiKeyForUser, listApiKeysForUser, revokeApiKey, getUserByApiKey
 } from './auth.js';
 import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload } from './extract.js';
+import { getUserSetting, updateUserSetting } from './user-settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -66,7 +67,8 @@ app.post('/api/extract/download', authMiddleware, async (req, res) => {
     return res.json({ data: null, error: { message: '缺少 input 字段' } });
   }
   try {
-    const result = await parseAndDownload(input);
+    const settings = await getUserSetting(req.user.id);
+    const result = await parseAndDownload(input, settings.offline_output_root);
     return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
   } catch (err) {
     console.error('extract/download error:', err);
@@ -81,11 +83,12 @@ app.post('/api/extract/redownload', authMiddleware, async (req, res) => {
     return res.json({ data: null, error: { message: '缺少 input 字段' } });
   }
   try {
-    const result = await redownload(input);
+    const settings = await getUserSetting(req.user.id);
+    const result = await redownload(input, settings.offline_output_root);
     return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
   } catch (err) {
     console.error('extract/redownload error:', err);
-    return res.json({ data: null, error: { message: err.message } });
+    return res.json({ data: result, error: { message: err.message } });
   }
 });
 
@@ -107,7 +110,8 @@ app.get('/api/reading/:id/files', authMiddleware, async (req, res) => {
     if (!row.is_offline || !row.offline_path) {
       return res.json({ data: { ok: true, dir: null, files: [], message: '该文章未离线' } });
     }
-    const result = await listOfflineFiles(row.offline_path);
+    const settings = await getUserSetting(req.user.id);
+    const result = await listOfflineFiles(row.offline_path, settings.offline_output_root);
     if (!result.ok) {
       return res.json({ data: result, error: { message: result.message } });
     }
@@ -137,7 +141,8 @@ app.get('/api/reading-files/:dirName/:fileName', authMiddleware, async (req, res
     }
     // 找到匹配的 reading_item，用它真正的 offline_path 拼文件
     const matched = rows[0];
-    const safePath = resolveOfflinePath(matched.offline_path);
+    const settings = await getUserSetting(req.user.id);
+    const safePath = resolveOfflinePath(matched.offline_path, settings.offline_output_root);
     if (!safePath) {
       return res.status(400).json({ data: null, error: { message: '路径越界' } });
     }
@@ -219,6 +224,26 @@ app.patch('/api/reading/:id', authMiddleware, async (req, res) => {
     return res.json({ data: { success: true }, error: null });
   } catch (err) {
     console.error('reading PATCH error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// ── 用户设置(当前主要是离线保存地址)───────────────────────
+
+app.get('/api/user-settings', authMiddleware, async (req, res) => {
+  try {
+    const settings = await getUserSetting(req.user.id);
+    return res.json({ data: settings, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+app.put('/api/user-settings', authMiddleware, async (req, res) => {
+  try {
+    const settings = await updateUserSetting(req.user.id, req.body || {});
+    return res.json({ data: settings, error: null });
+  } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }
 });
@@ -1068,7 +1093,8 @@ app.post('/api/v1/extract/download', apiKeyAuth, async (req, res) => {
     return res.json({ data: null, error: { message: '缺少 input 字段' } });
   }
   try {
-    const result = await parseAndDownload(input);
+    const settings = await getUserSetting(req.user.id);
+    const result = await parseAndDownload(input, settings.offline_output_root);
     return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });

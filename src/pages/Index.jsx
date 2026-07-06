@@ -368,6 +368,44 @@ const Index = () => {
 
   const { user, logout } = useAuth();
 
+  // ── 移动端返回手势 / 浏览器后退支持 ──
+  // 状态栈:['tasks'] → pushState 切换时压栈
+  // 监听到 popstate 时回退到栈顶上一个 tab
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // 初始化:压入当前 tab 作为基线
+    try { window.history.replaceState({ tab: activeTab }, ''); } catch (_) {}
+    const onPopState = (e) => {
+      // 优先关闭弹层(配置 / 悬浮梳理 / 用户设置 / 编辑器)
+      if (userSettingsOpen) { setUserSettingsOpen(false); return; }
+      if (floatNoteOpen)    { setFloatNoteOpen(false);    return; }
+      if (configOpen)       { setConfigOpen(false);       return; }
+      const state = e.state;
+      if (state && state.tab) {
+        setActiveTab(state.tab);
+      } else {
+        // 栈空时回到 dashboard(首页)
+        setActiveTab('dashboard');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+    // 只在弹层变化或首次挂载时重新订阅
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userSettingsOpen, floatNoteOpen, configOpen]);
+
+  // tab 切换时压栈(只在非初始 render 才 push,避免历史里塞一堆重复项)
+  const tabHistoryRef = useRef(['tasks']);
+  useEffect(() => {
+    const stack = tabHistoryRef.current;
+    if (stack[stack.length - 1] !== activeTab) {
+      stack.push(activeTab);
+      if (stack.length > 10) stack.shift();
+      try { window.history.pushState({ tab: activeTab }, ''); } catch (_) {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -417,9 +455,9 @@ const Index = () => {
   };
 
   return (
-    <div className='flex flex-col h-screen bg-[#f5f5f5] overflow-hidden'>
-      {/* ══ 移动端顶部标题栏 ══ */}
-      <header className='md:hidden flex-shrink-0 bg-white h-11 flex items-center px-4 border-b border-gray-100'>
+    <div className='flex flex-col h-screen-safe bg-[#f5f5f5] overflow-hidden'>
+      {/* ══ 移动端顶部标题栏(适配刘海屏) ══ */}
+      <header className='md:hidden flex-shrink-0 bg-white h-11 flex items-center px-4 pt-safe border-b border-gray-100'>
         <img src='/logo.png' alt='AI-Buddy' className='h-7 w-7 rounded-md object-cover mr-2' />
         <span className='text-sm font-bold text-gray-800'>AI-Buddy</span>
         <span className='ml-auto text-xs text-gray-400'>
@@ -525,8 +563,8 @@ const Index = () => {
         <main className='flex-1 overflow-hidden min-h-0'>{renderPage()}</main>
       </div>
 
-      {/* ══ 移动端底部导航 ══ */}
-      <nav className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch h-14'>
+      {/* ══ 移动端底部导航(适配底部小白条,sticky 避免被键盘顶起) ══ */}
+      <nav className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch h-14 pb-safe sticky bottom-0 z-30'>
         {navItems.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id && !configOpen;
           return (

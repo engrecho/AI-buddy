@@ -148,7 +148,7 @@ bash /www/wwwroot/你的域名/deploy/pull.sh
 
 ### 8. yarn install 报「getaddrinfo ENOTFOUND r.npm.sankuai.com」
 
-**原因**：Yarn registry 指向了美团内网源。
+**原因**：Yarn registry 指向了不可访问的内网源。
 
 **修复**：
 
@@ -306,13 +306,13 @@ grep ' 5[0-9][0-9] ' /www/wwwlogs/你的域名.log | tail
 3. 查看 MySQL 错误日志
 4. 提交 GitHub Issue：<https://github.com/engrecho/AI-buddy/issues>
 
-## 已知问题与坑（V61+）
+## 已知问题与坑
 
 > 这些问题都已修复，新部署同样需要注意。
 
 ### 1. yarn install 报「getaddrinfo ENOTFOUND r.npm.sankuai.com」
 
-**原因**：Yarn registry 指向了美团内网源 `r.npm.sankuai.com`，腾讯云服务器无法访问。
+**原因**：Yarn registry 指向了不可访问的内网源，腾讯云服务器无法解析。
 
 **修复**：
 ```bash

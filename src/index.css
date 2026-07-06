@@ -599,3 +599,41 @@
 .rich-content .task-mention-chip {
   pointer-events: none;
 }
+
+/* ===== iOS / 移动端适配 ===== */
+
+/* CSS 变量:安全区 + 动态视口 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --app-height: 100vh;
+}
+
+/* 支持 dvh 的浏览器(现代 Safari/Chrome)用动态视口,避免地址栏/键盘跳动 */
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
+}
+
+.h-screen-safe {
+  height: var(--app-height);
+}
+
+.pt-safe  { padding-top:    var(--safe-top); }
+.pb-safe  { padding-bottom: var(--safe-bottom); }
+.pl-safe  { padding-left:   var(--safe-left); }
+.pr-safe  { padding-right:  var(--safe-right); }
+.inset-x-safe { padding-left: var(--safe-left); padding-right: var(--safe-right); }
+
+/* 顶部刘海安全区:用于固定头部 */
+.top-safe    { top:    var(--safe-top); }
+.bottom-safe { bottom: var(--safe-bottom); }
+
+/* 移动端滚动容器:在 iOS Safari 上避免弹性滚动穿透到底层 */
+.overflow-y-safe {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}

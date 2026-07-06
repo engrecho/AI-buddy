@@ -48,7 +48,7 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
 
 社媒内容（抖音/B站/小红书/公众号等）解析与下载：
   需先安装 ExtractVideoSkill：
-    git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.workbuddy/skills/greenvideo-extract
+    git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.all-platform-video-extract
   然后直接调它的脚本，拿到结果后用本 SKILL 的 add-reading 写入 Buddy。
 `);
 }
@@ -365,7 +365,8 @@ async function cmdDoctor() {
   }
 
   // 3. ExtractVideoSkill 安装检查
-  const skillDir = path.join(os.homedir(), '.workbuddy', 'skills', 'greenvideo-extract');
+  const skillDir = process.env.GV_SKILL_DIR
+    || path.join(os.homedir(), '.all-platform-video-extract');
   const extractScript = path.join(skillDir, 'scripts', 'video_extract.cjs');
   const downloadScript = path.join(skillDir, 'scripts', 'download_videos.cjs');
   if (fs.existsSync(extractScript)) {

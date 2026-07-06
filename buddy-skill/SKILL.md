@@ -1,6 +1,6 @@
 ---
 name: buddy-skill
-description: AI-Buddy 的官方 SKILL——AI-Buddy 是一个为碎片化内容而生的轻量工作空间，本 SKILL 让 AI 助手通过 API Key 安全地查询、修改、整合用户在 AI-Buddy 中的任务、备忘、阅读收藏、随记。当用户提到"我的任务"、"添加任务"、"整理任务"、"记个备忘"、"把今天读到的文章存下来"、"我有哪些 to do"时使用此 skill。删除和整理任务前必须先列计划并取得用户确认。社媒内容（抖音/B站/小红书/公众号等）解析与下载需配合 ExtractVideoSkill 一起使用。
+description: AI-Buddy 的官方 SKILL——AI-Buddy 是一个为碎片化内容而生的轻量工作空间，本 SKILL 让 AI 助手通过 API Key 安全地查询、修改、整合用户在 AI-Buddy 中的任务、备忘、阅读收藏、随记。当用户提到"我的任务"、"添加任务"、"整理任务"、"记个备忘"、"把今天读到的文章存下来"、"我有哪些 to do"时使用此 skill。删除和整理任务前必须先列计划并取得用户确认。社媒内容（抖音/B站/小红书/公众号等）解析与下载需配合独立 SKILL `ExtractVideoSkill`（仓库 https://github.com/engrecho/ExtractVideoSkill，安装到 `~/.all-platform-video-extract/`）。
 ---
 
 # buddy-skill
@@ -104,24 +104,26 @@ buddy-skill 只负责访问 AI-Buddy 的数据。**社媒内容解析（抖音 /
 ### ExtractVideoSkill 仓库
 
 - 仓库：<https://github.com/engrecho/ExtractVideoSkill.git>
-- 安装位置：`~/.workbuddy/skills/greenvideo-extract/`（软链或克隆均可）
+- 安装位置：`~/.all-platform-video-extract/`（独立 SKILL，不再绑定到 `~/.workbuddy/skills/`）
 - 提供：
   - `scripts/video_extract.cjs --json "<分享文本>"` — 解析（返回平台 / 标题 / 封面 / 资源列表）
   - `scripts/download_videos.cjs "<分享文本>"` — 解析 + 下载到本地
+  - `scripts/init_config.cjs` — 首次使用交互式配置默认保存地址与解析服务
 
 ### 安装与检测
 
 ```bash
 # 方式 1：直接克隆
-git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.workbuddy/skills/greenvideo-extract
+git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.all-platform-video-extract
 
-# 方式 2：放在本地任意目录并软链
+# 方式 2：放在本地任意目录
 git clone https://github.com/engrecho/ExtractVideoSkill.git ~/tools/ExtractVideoSkill
-ln -s ~/tools/ExtractVideoSkill ~/.workbuddy/skills/greenvideo-extract
+# 然后把 SKILL 路径指过去(env GV_SKILL_DIR 或 server .env)
+export GV_SKILL_DIR=~/tools/ExtractVideoSkill
 ```
 
-- AI 助手在调用社媒能力前，必须先 `ls ~/.workbuddy/skills/greenvideo-extract/scripts/`
-- 没装 → 提示用户「需要安装 ExtractVideoSkill（抖音/B站等解析依赖），是否克隆到 `~/.workbuddy/skills/greenvideo-extract`？」并执行克隆
+- AI 助手在调用社媒能力前，必须先确认 `~/.all-platform-video-extract/scripts/` 存在（可通过 `ls` 或 `node -v` 验证）
+- 没装 → 提示用户「需要安装 ExtractVideoSkill（抖音/B站等解析依赖），是否克隆到 `~/.all-platform-video-extract`？」并执行克隆
 - 已装但脚本缺失 → 提示「ExtractVideoSkill 目录已存在但缺少 scripts/，请检查仓库完整性或重新克隆」
 - 脚本运行失败 → 把 stderr 末尾 10-20 行原样展示给用户，不要编造成功
 
@@ -129,13 +131,33 @@ ln -s ~/tools/ExtractVideoSkill ~/.workbuddy/skills/greenvideo-extract
 
 ```bash
 # 解析
-node ~/.workbuddy/skills/greenvideo-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
+node ~/.all-platform-video-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
 
-# 下载到本地（默认输出 ./gv_downloads/）
-node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本或URL>"
+# 下载到本地
+# 默认输出由 <SKILL_DIR>/downloads/ 决定；
+# 首次使用会引导填写保存地址并写入 ~/.all-platform-video-extract/config.json
+node ~/.all-platform-video-extract/scripts/download_videos.cjs "<分享文本或URL>"
+
 # 也支持环境变量：
-#   GV_OUTPUT=<输出根目录>   默认 ./gv_downloads
-#   GV_NODE=<node 路径>      默认 process.execPath（当前进程 Node）
+#   GV_OUTPUT=<输出根目录>   优先级最高
+#   GV_HOST=<解析服务>        默认 https://greenvideo.cc/
+#   GV_NODE=<node 路径>       默认 process.execPath
+```
+
+### AI-Buddy 离线缓存地址
+
+AI-Buddy 自身的「阅读列表 → 离线到本地」通过后端 `POST /api/extract/download` 调用 ExtractVideoSkill 完成。
+每个用户的默认保存地址保存在 `user_settings` 表(`offline_output_root` 字段)，可在 AI-Buddy 网页「阅读 → 添加文章 → 勾选"离线到本地"」时点击「立即设置」修改。
+
+AI 助手要新增/查询用户离线地址时，可调用：
+
+```bash
+# 读取
+curl -b cookies.txt https://buddy.bajiaolu.cn/api/user-settings
+# 写入
+curl -b cookies.txt -X PUT -H 'Content-Type: application/json' \
+     -d '{"offline_output_root":"/data/buddy/offline"}' \
+     https://buddy.bajiaolu.cn/api/user-settings
 ```
 
 ### 解析结果结构（`--json` 模式，stdout 用 `__GV_JSON_BEGIN__` / `__GV_JSON_END__` marker 分隔）
@@ -202,7 +224,7 @@ node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享
 1. AI 看到分享文本或 URL
 2. AI 调 ExtractVideoSkill 解析：
    ```bash
-   node ~/.workbuddy/skills/greenvideo-extract/scripts/video_extract.cjs --json "<分享文本>"
+   node ~/.all-platform-video-extract/scripts/video_extract.cjs --json "<分享文本>"
    ```
 3. 从返回的 `__GV_JSON_BEGIN__/END__` 之间提取 JSON：
    - `data.vid` → vid
@@ -216,7 +238,7 @@ node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享
 
 1. AI 执行：
    ```bash
-   node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本>"
+   node ~/.all-platform-video-extract/scripts/download_videos.cjs "<分享文本>"
    ```
 2. 从 stdout 解析 `[OK]   <host>/<vid>  -> <dir>` 那一行拿 `offline_path`
 3. AI 调 `createReading(...)` 时把 `is_offline=true`、`offline_path=...` 带上
@@ -224,7 +246,7 @@ node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享
 
 **如果不确定要不要下载**，AI 应主动询问用户；只有在用户说"自动下载所有"之类的偏好时才跳过询问。
 
-**如果没有安装 ExtractVideoSkill**，AI 应主动询问用户是否从 <https://github.com/engrecho/ExtractVideoSkill.git> 克隆到 `~/.workbuddy/skills/greenvideo-extract/`；用户同意后执行 `git clone`，再继续上面流程。
+**如果没有安装 ExtractVideoSkill**，AI 应主动询问用户是否从 <https://github.com/engrecho/ExtractVideoSkill.git> 克隆到 `~/.all-platform-video-extract/`；用户同意后执行 `git clone`，再继续上面流程。
 
 ### 用户说"看看我最近存的抖音"
 
@@ -347,9 +369,9 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   clean-duplicates       归档重复任务
 
 社媒内容（抖音/B站/小红书/公众号等）解析与下载需先安装 ExtractVideoSkill：
-  git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.workbuddy/skills/greenvideo-extract
-  node ~/.workbuddy/skills/greenvideo-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
-  node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本或URL>"
+  git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.all-platform-video-extract
+  node ~/.all-platform-video-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
+  node ~/.all-platform-video-extract/scripts/download_videos.cjs "<分享文本或URL>"
 ```
 
 ## 故障排查

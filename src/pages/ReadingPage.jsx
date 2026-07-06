@@ -168,12 +168,46 @@ const ReadingPage = () => {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [offlineRoot, setOfflineRoot] = useState("");  // 服务端保存地址
+  const [offlinePathDialogOpen, setOfflinePathDialogOpen] = useState(false);
+  const [offlinePathInput, setOfflinePathInput] = useState("");
   const urlFetchedRef = useRef("");
 
   useEffect(() => {
     fetchItems();
     fetchTags();
+    fetchOfflineRoot();
   }, []);
+
+  // ── 获取 / 保存离线地址 ──
+  const fetchOfflineRoot = async () => {
+    try {
+      const r = await fetch('/api/user-settings', { credentials: 'include' });
+      if (r.ok) {
+        const j = await r.json();
+        setOfflineRoot(j.offline_output_root || '');
+        setOfflinePathInput(j.offline_output_root || '');
+      }
+    } catch { /* 失败时静默——默认值由服务端兜底 */ }
+  };
+  const openOfflinePathSettings = () => {
+    setOfflinePathInput(offlineRoot || '');
+    setOfflinePathDialogOpen(true);
+  };
+  const saveOfflinePath = async () => {
+    try {
+      const r = await fetch('/api/user-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ offline_output_root: offlinePathInput.trim() }),
+      });
+      if (r.ok) {
+        setOfflineRoot(offlinePathInput.trim());
+        setOfflinePathDialogOpen(false);
+      }
+    } catch { /* ignore */ }
+  };
 
   // ── 数据获取 ──────────────────────────────────────────────────────
   const fetchItems = async () => {
@@ -638,7 +672,7 @@ const ReadingPage = () => {
                   <span className="hidden sm:inline">添加文章</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90vh] max-h-screen overflow-y-auto">
+              <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>添加文章</DialogTitle>
                 </DialogHeader>
@@ -759,10 +793,27 @@ const ReadingPage = () => {
                           <div className="text-xs text-gray-500 leading-snug">
                             视频/图/文章 markdown 下载到服务端
                           </div>
+                          {form.is_offline && offlineRoot && (
+                            <div className="text-[11px] text-gray-400 mt-0.5 truncate" title={offlineRoot}>
+                              保存到: {offlineRoot}
+                            </div>
+                          )}
                         </div>
                       </label>
                     </div>
                   </div>
+                  {form.is_offline && (
+                    <div className="-mt-1 text-[11px] text-gray-500 flex items-center justify-between">
+                      <span>如需修改保存地址,请到「配置 → 用户设置」调整。</span>
+                      <button
+                        type="button"
+                        onClick={openOfflinePathSettings}
+                        className="text-indigo-500 hover:text-indigo-700 hover:underline"
+                      >
+                        立即设置
+                      </button>
+                    </div>
+                  )}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-sm font-medium">标签</label>
@@ -806,12 +857,51 @@ const ReadingPage = () => {
                 </form>
               </DialogContent>
             </Dialog>
+
+            {/* 离线保存地址设置弹窗 */}
+            <Dialog open={offlinePathDialogOpen} onOpenChange={setOfflinePathDialogOpen}>
+              <DialogContent className="w-full max-w-md mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Download className="h-4 w-4" />
+                    设置离线保存地址
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 mt-2">
+                  <p className="text-sm text-gray-600">
+                    视频、图集、公众号文章 markdown 等离线资源会保存到服务端的这个目录。
+                  </p>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">保存地址(服务端绝对路径)</label>
+                    <Input
+                      value={offlinePathInput}
+                      onChange={(e) => setOfflinePathInput(e.target.value)}
+                      placeholder="/data/buddy/offline"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      留空将使用服务端默认地址;请确保目录存在且有写权限。
+                    </p>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button type="button" variant="outline" onClick={() => setOfflinePathDialogOpen(false)}>取消</Button>
+                    <Button
+                      type="button"
+                      onClick={saveOfflinePath}
+                      className="border-0"
+                      style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}
+                    >
+                      保存
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
 
-          {/* 文章列表 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* 文章列表(列表式:头图缩略图 + 标题/摘要 + 右侧操作) */}
+          <div className="flex flex-col divide-y divide-gray-100 bg-white rounded-xl border border-gray-100 overflow-hidden">
             {filteredItems.map((item) => (
-              <ArticleCard
+              <ArticleRow
                 key={item.id}
                 item={item}
                 tagMap={tagMap}
@@ -869,7 +959,7 @@ const ReadingPage = () => {
 
       {/* 编辑 Dialog */}
       <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
-        <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90vh] max-h-screen overflow-y-auto">
+        <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-4 w-4" />
@@ -1020,7 +1110,7 @@ const ReadingPage = () => {
 
       {/* 离线文件 Dialog */}
       <Dialog open={!!offlineFilesItem} onOpenChange={(open) => { if (!open) setOfflineFilesItem(null); }}>
-        <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90vh] max-h-screen overflow-y-auto">
+        <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderOpen className="h-4 w-4" />
@@ -1152,153 +1242,131 @@ function SideItem({ active, onClick, label, count, icon, color }) {
   );
 }
 
-// ── 子组件：文章卡片 ──────────────────────────────────────────────
-function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles }) {
+// ── 子组件：文章列表行(列表式展示,头图缩略图在左侧) ──────────────────
+function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles }) {
   const pm = platformMeta(item.platform);
   const PlatformIcon = pm.Icon;
   return (
-    <div className={`
-      bg-white rounded-xl border border-gray-100 overflow-hidden
-      hover:shadow-md transition-all duration-200 flex flex-col
-      ${item.is_read ? "opacity-60" : ""}
-    `}>
-      {/* 封面图（仅当 cover_url 存在时显示） */}
-      {item.cover_url && (
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block relative aspect-[16/9] bg-gray-100 overflow-hidden group"
-        >
+    <div
+      className={`
+        group flex items-center gap-3 px-3 py-2.5
+        hover:bg-gray-50 active:bg-gray-100 transition-colors
+        ${item.is_read ? "opacity-60" : ""}
+      `}
+    >
+      {/* 头图缩略图(60×40 比例) */}
+      <a
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-shrink-0 block w-[60px] h-[40px] sm:w-[72px] sm:h-[48px] bg-gray-100 rounded-md overflow-hidden relative"
+        title={item.title}
+      >
+        {item.cover_url ? (
           <img
             src={item.cover_url}
             alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover"
             loading="lazy"
             referrerPolicy="no-referrer"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const ph = e.currentTarget.parentElement.querySelector('[data-fallback]');
+              if (ph) ph.style.display = 'flex';
+            }}
           />
-          {/* 平台角标 */}
-          <div
-            className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white shadow-sm"
-            style={{ backgroundColor: pm.color }}
+        ) : null}
+        <div
+          data-fallback
+          className={`absolute inset-0 ${item.cover_url ? 'hidden' : 'flex'} items-center justify-center text-white`}
+          style={{ backgroundColor: pm.color }}
+        >
+          <PlatformIcon className="h-4 w-4" />
+        </div>
+      </a>
+
+      {/* 标题 / 摘要 */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          {/* 已读 toggle */}
+          <button
+            onClick={onToggleRead}
+            className={`flex-shrink-0 w-4 h-4 rounded-full border-[1.5px] flex items-center justify-center transition-all ${
+              item.is_read
+                ? "border-green-400 bg-green-400 text-white"
+                : "border-gray-300 hover:border-green-400 text-transparent hover:text-green-400"
+            }`}
+            title={item.is_read ? "标记未读" : "标记已读"}
           >
-            <PlatformIcon className="h-3 w-3" />
-            {pm.label}
-          </div>
-          {/* 离线标识 */}
-          {item.is_offline && (
-            <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-black/60 text-white backdrop-blur-sm">
-              <Download className="h-3 w-3" />
-              已离线
-            </div>
-          )}
-        </a>
-      )}
+            <Check className="h-2.5 w-2.5" />
+          </button>
 
-      <div className="p-4 flex flex-col flex-1">
-      {/* 第一行：已读按钮 + 标题 + 星标按钮 */}
-      <div className="flex items-start gap-2 mb-2">
-        {/* 已读 toggle */}
-        <button
-          onClick={onToggleRead}
-          className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-            item.is_read
-              ? "border-green-400 bg-green-400 text-white"
-              : "border-gray-300 hover:border-green-400 text-transparent hover:text-green-400"
-          }`}
-          title={item.is_read ? "标记未读" : "标记已读"}
-        >
-          <Check className="h-3 w-3" />
-        </button>
+          {/* 标题(单行截断) */}
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex-1 min-w-0 font-medium text-sm leading-snug truncate hover:underline ${
+              item.is_read ? "text-gray-400 line-through decoration-gray-300" : "text-gray-900"
+            }`}
+          >
+            {item.title}
+          </a>
 
-        {/* 标题 */}
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`flex-1 min-w-0 font-semibold leading-snug text-[15px] hover:underline ${
-            item.is_read ? "text-gray-400 line-through decoration-gray-300" : "text-gray-900"
-          }`}
-        >
-          {item.title}
-        </a>
+          {/* 星标 */}
+          <button
+            onClick={onToggleStar}
+            className={`flex-shrink-0 p-0.5 rounded transition-colors ${
+              item.is_starred ? "text-amber-400" : "text-gray-300 hover:text-amber-400"
+            }`}
+            title={item.is_starred ? "取消星标" : "加星标"}
+          >
+            <Star className="h-3.5 w-3.5" fill={item.is_starred ? "currentColor" : "none"} />
+          </button>
+        </div>
 
-        {/* 星标 toggle */}
-        <button
-          onClick={onToggleStar}
-          className={`mt-0.5 flex-shrink-0 p-0.5 rounded transition-colors ${
-            item.is_starred
-              ? "text-amber-400"
-              : "text-gray-300 hover:text-amber-400"
-          }`}
-          title={item.is_starred ? "取消星标" : "加星标"}
-        >
-          <Star className="h-4 w-4" fill={item.is_starred ? "currentColor" : "none"} />
-        </button>
-      </div>
-
-      {/* 无封面时显示平台+离线小标签 */}
-      {!item.cover_url && (
-        <div className="flex items-center gap-1.5 mb-2 -mt-1">
+        {/* 摘要(单行) */}
+        <div className="flex items-center gap-1.5 text-xs text-gray-500">
           <span
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium text-white"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-white flex-shrink-0"
             style={{ backgroundColor: pm.color }}
           >
-            <PlatformIcon className="h-3 w-3" />
+            <PlatformIcon className="h-2.5 w-2.5" />
             {pm.label}
           </span>
           {item.is_offline && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
-              <Download className="h-3 w-3" />
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 flex-shrink-0">
+              <Download className="h-2.5 w-2.5" />
               已离线
             </span>
           )}
+          {(item.tags || []).slice(0, 2).map((tid) => {
+            const tag = tagMap[tid];
+            if (!tag) return null;
+            return (
+              <span
+                key={tid}
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap flex-shrink-0 hidden sm:inline-block"
+                style={tagStyle(tag.color)}
+              >
+                {tag.name}
+              </span>
+            );
+          })}
+          {item.summary && (
+            <span className="truncate text-gray-500 hidden md:inline">
+              {item.summary}
+            </span>
+          )}
         </div>
-      )}
-
-      {/* 内容摘要：最多3行，撑满剩余空间 */}
-      <div className="flex-1 min-h-0">
-        {item.summary ? (
-          <p className="text-sm text-gray-500 line-clamp-3 leading-relaxed">
-            {item.summary}
-          </p>
-        ) : (
-          <p className="text-sm text-gray-300 italic">暂无摘要</p>
-        )}
       </div>
 
-      {/* 底部一行：标签 + 域名 + 日期 + 删除 */}
-      <div className="flex items-center gap-1.5 pt-2.5 mt-2.5 border-t border-gray-50 flex-wrap">
-        {/* 标签 */}
-        {(item.tags || []).map((tid) => {
-          const tag = tagMap[tid];
-          if (!tag) return null;
-          return (
-            <span
-              key={tid}
-              className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0"
-              style={tagStyle(tag.color)}
-            >
-              {tag.name}
-            </span>
-          );
-        })}
-        {(item.tags || []).length === 0 && (
-          <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-400 flex-shrink-0">未分类</span>
-        )}
-
-        {/* 弹性空白，把后面的信息推到右侧 */}
-        <div className="flex-1" />
-
-        {/* 加入日期 */}
-        <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">
+      {/* 右侧:日期 + 操作(PC 端 hover 显示,移动端始终显示) */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <span className="text-xs text-gray-400 tabular-nums hidden sm:inline">
           {new Date(item.created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
         </span>
-
-        {/* 操作按钮组 */}
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          {/* 复制链接 */}
+        <div className="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <button
             onClick={onCopy}
             className="p-1 rounded text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
@@ -1306,7 +1374,6 @@ function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdi
           >
             <Copy className="h-3.5 w-3.5" />
           </button>
-          {/* 编辑 */}
           <button
             onClick={onEdit}
             className="p-1 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 transition-colors"
@@ -1314,7 +1381,6 @@ function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdi
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          {/* 离线文件查看/下载（仅当离线时显示） */}
           {item.is_offline && (
             <button
               onClick={onOpenFiles}
@@ -1324,7 +1390,6 @@ function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdi
               <FolderOpen className="h-3.5 w-3.5" />
             </button>
           )}
-          {/* 删除 */}
           <button
             onClick={onDelete}
             className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 active:bg-red-100 transition-colors"
@@ -1333,7 +1398,6 @@ function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdi
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
-      </div>
       </div>
     </div>
   );
