@@ -455,9 +455,12 @@ const Index = () => {
   };
 
   return (
-    <div className='flex flex-col h-screen-safe bg-[#f5f5f5] overflow-hidden'>
+    <div className='flex flex-col h-screen-safe bg-[#f5f5f5] min-h-0'>
       {/* ══ 移动端顶部标题栏(适配刘海屏) ══ */}
-      <header className='md:hidden flex-shrink-0 bg-white h-11 flex items-center px-4 pt-safe border-b border-gray-100'>
+      <header
+        className='md:hidden flex-shrink-0 bg-white flex items-center px-4 border-b border-gray-100'
+        style={{ height: 'calc(44px + env(safe-area-inset-top, 0px) + 4px)', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2px)' }}
+      >
         <img src='/logo.png' alt='AI-Buddy' className='h-7 w-7 rounded-md object-cover mr-2' />
         <span className='text-sm font-bold text-gray-800'>AI-Buddy</span>
         <span className='ml-auto text-xs text-gray-400'>
@@ -563,8 +566,11 @@ const Index = () => {
         <main className='flex-1 overflow-hidden min-h-0'>{renderPage()}</main>
       </div>
 
-      {/* ══ 移动端底部导航(适配底部小白条,sticky 避免被键盘顶起) ══ */}
-      <nav className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch h-14 pb-safe sticky bottom-0 z-30'>
+      {/* ══ 移动端底部导航(适配底部小白条 + 各种 iOS WebClip 状态) ══ */}
+      <nav
+        className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch z-30'
+        style={{ height: 'calc(56px + env(safe-area-inset-bottom, 0px) + 8px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
+      >
         {navItems.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id && !configOpen;
           return (

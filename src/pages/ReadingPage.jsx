@@ -1243,23 +1243,24 @@ function SideItem({ active, onClick, label, count, icon, color }) {
 }
 
 // ── 子组件：文章列表行(列表式展示,头图缩略图在左侧) ──────────────────
+// 布局: 头图(64×44 / 80×56)  |  标题(2行) + 摘要(4行)        |  元信息 + 操作(1行底部)
 function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles }) {
   const pm = platformMeta(item.platform);
   const PlatformIcon = pm.Icon;
   return (
     <div
       className={`
-        group flex items-center gap-3 px-3 py-2.5
+        group flex gap-3 px-3 py-3 sm:px-4 sm:py-3.5
         hover:bg-gray-50 active:bg-gray-100 transition-colors
         ${item.is_read ? "opacity-60" : ""}
       `}
     >
-      {/* 头图缩略图(60×40 比例) */}
+      {/* 头图缩略图(64×44 移动端,80×56 PC 端) */}
       <a
         href={item.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex-shrink-0 block w-[60px] h-[40px] sm:w-[72px] sm:h-[48px] bg-gray-100 rounded-md overflow-hidden relative"
+        className="flex-shrink-0 block w-[64px] h-[44px] sm:w-[80px] sm:h-[56px] bg-gray-100 rounded-md overflow-hidden relative self-start"
         title={item.title}
       >
         {item.cover_url ? (
@@ -1281,17 +1282,17 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
           className={`absolute inset-0 ${item.cover_url ? 'hidden' : 'flex'} items-center justify-center text-white`}
           style={{ backgroundColor: pm.color }}
         >
-          <PlatformIcon className="h-4 w-4" />
+          <PlatformIcon className="h-5 w-5" />
         </div>
       </a>
 
-      {/* 标题 / 摘要 */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          {/* 已读 toggle */}
+      {/* 中间:标题 + 摘要 + 底部元信息 */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        {/* 标题(最多 2 行) + 已读 + 星标 */}
+        <div className="flex items-start gap-1.5">
           <button
             onClick={onToggleRead}
-            className={`flex-shrink-0 w-4 h-4 rounded-full border-[1.5px] flex items-center justify-center transition-all ${
+            className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-[1.5px] flex items-center justify-center transition-all ${
               item.is_read
                 ? "border-green-400 bg-green-400 text-white"
                 : "border-gray-300 hover:border-green-400 text-transparent hover:text-green-400"
@@ -1300,20 +1301,16 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
           >
             <Check className="h-2.5 w-2.5" />
           </button>
-
-          {/* 标题(单行截断) */}
           <a
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex-1 min-w-0 font-medium text-sm leading-snug truncate hover:underline ${
+            className={`flex-1 min-w-0 font-semibold text-[15px] leading-snug line-clamp-2 hover:underline ${
               item.is_read ? "text-gray-400 line-through decoration-gray-300" : "text-gray-900"
             }`}
           >
             {item.title}
           </a>
-
-          {/* 星标 */}
           <button
             onClick={onToggleStar}
             className={`flex-shrink-0 p-0.5 rounded transition-colors ${
@@ -1321,12 +1318,21 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
             }`}
             title={item.is_starred ? "取消星标" : "加星标"}
           >
-            <Star className="h-3.5 w-3.5" fill={item.is_starred ? "currentColor" : "none"} />
+            <Star className="h-4 w-4" fill={item.is_starred ? "currentColor" : "none"} />
           </button>
         </div>
 
-        {/* 摘要(单行) */}
-        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+        {/* 摘要(最多 4 行) */}
+        {item.summary ? (
+          <p className="text-[13px] text-gray-500 leading-relaxed line-clamp-4">
+            {item.summary}
+          </p>
+        ) : (
+          <p className="text-[13px] text-gray-300 italic">暂无摘要</p>
+        )}
+
+        {/* 底部元信息 + 操作(单行) */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
           <span
             className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-white flex-shrink-0"
             style={{ backgroundColor: pm.color }}
@@ -1340,63 +1346,60 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
               已离线
             </span>
           )}
-          {(item.tags || []).slice(0, 2).map((tid) => {
+          {(item.tags || []).slice(0, 3).map((tid) => {
             const tag = tagMap[tid];
             if (!tag) return null;
             return (
               <span
                 key={tid}
-                className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap flex-shrink-0 hidden sm:inline-block"
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap flex-shrink-0"
                 style={tagStyle(tag.color)}
               >
                 {tag.name}
               </span>
             );
           })}
-          {item.summary && (
-            <span className="truncate text-gray-500 hidden md:inline">
-              {item.summary}
-            </span>
+          {(!item.tags || item.tags.length === 0) && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-400 flex-shrink-0">未分类</span>
           )}
-        </div>
-      </div>
 
-      {/* 右侧:日期 + 操作(PC 端 hover 显示,移动端始终显示) */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="text-xs text-gray-400 tabular-nums hidden sm:inline">
-          {new Date(item.created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
-        </span>
-        <div className="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={onCopy}
-            className="p-1 rounded text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
-            title="复制链接"
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={onEdit}
-            className="p-1 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 transition-colors"
-            title="编辑"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          {item.is_offline && (
+          {/* 推后:日期 + 操作 */}
+          <div className="flex-1" />
+          <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">
+            {new Date(item.created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
+          </span>
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
-              onClick={onOpenFiles}
-              className="p-1 rounded text-gray-300 hover:text-green-500 hover:bg-green-50 active:bg-green-100 transition-colors"
-              title="查看/下载离线文件"
+              onClick={onCopy}
+              className="p-1 rounded text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
+              title="复制链接"
             >
-              <FolderOpen className="h-3.5 w-3.5" />
+              <Copy className="h-3.5 w-3.5" />
             </button>
-          )}
-          <button
-            onClick={onDelete}
-            className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 active:bg-red-100 transition-colors"
-            title="删除"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+            <button
+              onClick={onEdit}
+              className="p-1 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 transition-colors"
+              title="编辑"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            {item.is_offline && (
+              <button
+                onClick={onOpenFiles}
+                className="p-1 rounded text-gray-300 hover:text-green-500 hover:bg-green-50 active:bg-green-100 transition-colors"
+                title="查看/下载离线文件"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              onClick={onDelete}
+              className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 active:bg-red-100 transition-colors"
+              title="删除"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
