@@ -20,7 +20,13 @@ const EXTRACT_SCRIPT = path.join(__dirname, 'scripts', 'video_extract.cjs');
 const args = process.argv.slice(2);
 const command = args[0];
 
-const VERSION = '1.1.0';
+// 版本号以 package.json 为准,避免多处维护
+const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+const VERSION = PKG.version;
+
+// 自更新配置(固定下载地址)
+const UPDATE_URL = 'https://buddy.bajiaolu.cn/buddy-skill.tar.gz';
+const VERSION_URL = 'https://buddy.bajiaolu.cn/buddy-skill.version';
 
 function printUsage() {
   console.log(`
@@ -63,6 +69,83 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
 解析脚本内置在 buddy-skill/scripts/video_extract.cjs,零依赖,仅用 Node 内置模块。
 下载由 AI-Buddy 服务端统一处理,保存到服务端默认目录,无需用户配置路径。
 `);
+}
+
+// ── 自更新：每次使用核对版本,落后则自动从固定地址下载更新 ────────────
+function compareVersion(a, b) {
+  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(s, d);
+    } else {
+      fs.copyFileSync(s, d);
+    }
+  }
+}
+
+async function downloadAndExtract(url, targetDir) {
+  const tmp = path.join(os.tmpdir(), `buddy-skill-${Date.now()}.tar.gz`);
+  const extractDir = path.join(os.tmpdir(), `buddy-skill-extract-${Date.now()}`);
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(tmp, buf);
+
+    fs.mkdirSync(extractDir, { recursive: true });
+    execFileSync('tar', ['-xzf', tmp, '-C', extractDir]);
+    const src = path.join(extractDir, 'buddy-skill');
+    if (!fs.existsSync(src)) throw new Error('解压结果缺少 buddy-skill 目录');
+    // 直接覆盖文件(不删除目标目录),避免正在运行的进程丢失目录结构
+    copyDirSync(src, targetDir);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+    fs.rmSync(extractDir, { recursive: true, force: true });
+  }
+}
+
+async function selfUpdateCheck() {
+  // 24 小时内只检查一次,避免每次运行都请求网络
+  const cacheFile = path.join(os.homedir(), '.buddy_skill_update_check');
+  const now = Date.now();
+  try {
+    if (fs.existsSync(cacheFile)) {
+      const last = Number(fs.readFileSync(cacheFile, 'utf8'));
+      if (now - last < 24 * 3600 * 1000) return;
+    }
+  } catch { /* ignore */ }
+  try {
+    fs.writeFileSync(cacheFile, String(now));
+  } catch { /* ignore */ }
+
+  try {
+    const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return;
+    const remoteVersion = (await res.text()).trim();
+    if (compareVersion(remoteVersion, VERSION) <= 0) return; // 本地已是最新
+
+    console.log(`发现 buddy-skill 新版本: ${VERSION} → ${remoteVersion}，正在自动更新...`);
+    await downloadAndExtract(UPDATE_URL, __dirname);
+    console.log(`✓ 已更新到 ${remoteVersion}，请重新运行上一条命令`);
+    process.exit(0);
+  } catch (err) {
+    if (process.env.DEBUG) console.error('[self-update]', err.message);
+  }
 }
 
 function parseFlags(argv) {
@@ -466,6 +549,9 @@ async function main() {
   if (command === 'doctor') {
     return cmdDoctor();
   }
+
+  // 自动更新检查：落后则下载更新(跳过 doctor/--version/help)
+  await selfUpdateCheck();
 
   const flags = parseFlags(args.slice(1));
 

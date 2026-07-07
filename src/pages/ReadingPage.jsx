@@ -632,15 +632,17 @@ const ReadingPage = () => {
             </div>
           </div>
 
-          {/* 添加文章按钮 - 固定在筛选栏上方右侧，始终可见 */}
-          <div className="flex items-center justify-end mb-3">
-            <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) resetForm(); }}>
-              <DialogTrigger asChild>
-                <Button className="flex-shrink-0 border-0" size="sm" style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}>
-                  <Plus className="h-4 w-4 md:mr-1.5" />
-                  <span className="hidden sm:inline">添加文章</span>
-                </Button>
-              </DialogTrigger>
+          {/* 悬浮添加按钮(FAB) - 右下角固定,始终可见可点 */}
+          <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) resetForm(); }}>
+            <DialogTrigger asChild>
+              <button
+                aria-label="添加文章"
+                className="fixed z-30 right-4 bottom-[calc(56px+env(safe-area-inset-bottom,0px)+16px)] md:bottom-6 md:right-6 flex items-center justify-center h-14 w-14 rounded-full shadow-xl border-0 active:scale-95 transition-transform"
+                style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}
+              >
+                <Plus className="h-6 w-6" />
+              </button>
+            </DialogTrigger>
               <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>添加文章</DialogTitle>
@@ -809,7 +811,6 @@ const ReadingPage = () => {
                 </form>
               </DialogContent>
             </Dialog>
-          </div>
 
           {/* 文章列表(列表式:头图缩略图 + 标题/摘要 + 右侧操作) */}
           <div className="flex flex-col divide-y divide-gray-100 bg-white rounded-xl border border-gray-100 overflow-hidden">

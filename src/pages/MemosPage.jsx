@@ -755,7 +755,7 @@ function MemoEditForm({ form, setForm, groups, tags, tasks, panelMode, onCancel,
         </div>
         <div className='h-2' />
       </div>
-      <div className='flex justify-end gap-2 px-5 py-3.5 border-t border-gray-100 flex-shrink-0'>
+      <div className='flex justify-end gap-2 px-5 py-3.5 border-t border-gray-100 flex-shrink-0 pb-safe'>
         <Button variant='outline' size='sm' onClick={onCancel}>
           取消
         </Button>
@@ -1422,7 +1422,7 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
     <div className='h-full overflow-hidden flex flex-col bg-[#f5f5f5]'>
       {/* 移动端全屏 */}
       {mobileMode && (
-        <div className='md:hidden fixed inset-0 z-50 flex flex-col bg-white'>
+        <div className='md:hidden fixed inset-0 z-50 flex flex-col bg-white pt-safe'>
           <div className='flex items-center justify-between px-4 h-12 border-b border-gray-100 flex-shrink-0'>
             <button
               onClick={() => {
@@ -1530,17 +1530,14 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
             {/* 新建按钮 + 搜索框（靠右） */}
             <div className='ml-auto flex items-center gap-1.5'>
               {/* 搜索框 */}
-              <div className='relative flex-shrink-0'>
+              <div className='relative flex-1 md:flex-initial md:flex-shrink-0'>
                 <Search className='absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none' />
                 <input
                   type='text'
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder='搜索…'
-                  className='h-7 pl-6 pr-6 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#bbea3b] focus:border-[#bbea3b] transition-colors'
-                  style={{
-                    width: '160px',
-                  }}
+                  className='h-7 pl-6 pr-6 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#bbea3b] focus:border-[#bbea3b] transition-colors w-full md:w-[160px]'
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery('')} className='absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'>
@@ -1695,7 +1692,7 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
 
       {/* 删除确认弹窗 */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
-        <AlertDialogContent className='max-w-sm'>
+        <AlertDialogContent className='max-w-sm w-[calc(100%-2rem)] pb-safe'>
           <AlertDialogHeader>
             <AlertDialogTitle className='flex items-center gap-2'>
               <AlertTriangle className='h-5 w-5 text-amber-500' />

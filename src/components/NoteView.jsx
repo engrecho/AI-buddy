@@ -58,7 +58,7 @@ function TaskDetailDrawer({ taskId, onClose }) {
     <>
       <div className='fixed inset-0 bg-black/20 z-[80]' onClick={onClose} />
       <div
-        className='fixed right-0 top-0 h-full z-[81] bg-white shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden'
+        className='fixed right-0 top-0 bottom-0 z-[81] bg-white shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden pt-safe pb-safe'
         style={{ width: 'min(100vw, 420px)', maxWidth: '100vw' }}
       >
         {loading ? (
@@ -334,7 +334,7 @@ export default function NoteView({ tasks: tasksProp = [], onSelectTask, floatMod
           </button>
         </div>
         {/* 列表 */}
-        <div className='flex-1 overflow-y-auto py-1'>
+        <div className='flex-1 overflow-y-auto py-1 pb-safe'>
           {filteredNotes.length === 0 && (
             <div className='flex flex-col items-center justify-center h-32 gap-2'>
               <FileText className='h-8 w-8 text-gray-200' />

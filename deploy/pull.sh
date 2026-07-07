@@ -109,5 +109,11 @@ tar -czf "$SKILL_TARBALL" \
 SKILL_SIZE=$(du -h "$SKILL_TARBALL" | cut -f1)
 log "  ✓ 打包完成: buddy-skill.tar.gz ($SKILL_SIZE)"
 log "  下载链接: https://buddy.bajiaolu.cn/buddy-skill.tar.gz"
+# 生成版本号文件(供 buddy-skill 自更新核对)
+SKILL_VERSION=$(node -p "require('./buddy-skill/package.json').version" 2>/dev/null)
+if [ -n "$SKILL_VERSION" ]; then
+  echo "$SKILL_VERSION" > "$PROJECT_DIR/build/buddy-skill.version"
+  log "  ✓ 版本号: $SKILL_VERSION (buddy-skill.version)"
+fi
 
 log "========== 全部完成 =========="
