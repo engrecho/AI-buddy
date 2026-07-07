@@ -1871,6 +1871,7 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
     <div className='flex flex-col h-full bg-white'>
       {/* 顶部栏 */}
       <div className='flex items-center gap-2 px-4 h-12 border-b border-gray-100 flex-shrink-0'>
+        {/* 返回上级任务(查看子任务时) */}
         {taskStack.length > 0 && (
           <button
             onClick={() => {
@@ -1884,6 +1885,16 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
             title='返回上级任务'
           >
             <ChevronRight className='h-4 w-4 rotate-180' />
+          </button>
+        )}
+        {/* 移动端/无 drawer 时:返回列表按钮(始终显示,避免左滑关闭后无路可退) */}
+        {!drawerMode && onBack && (
+          <button
+            onClick={onBack}
+            className='text-gray-400 hover:text-gray-700 flex-shrink-0 -ml-1'
+            title='返回任务列表'
+          >
+            <ArrowLeft className='h-4 w-4' />
           </button>
         )}
         <div className='flex-1 min-w-0'>
@@ -4018,21 +4029,25 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
   const getSubTasks = (parentId) => filteredTasks.filter((t) => t.parent_id === parentId);
   const mobileDetailVisible = selectedTask || isCreating;
 
-  // 移动端:打开详情/新建时 pushState,关闭时 back 一步
+  // 移动端:打开详情/新建时 pushState 一次,关闭时 back 一步
   // 监听到 popstate 时关闭自身,避免浏览器返回手势时把整个任务页切走
+  // 注意:依赖只取 mobileDetailVisible,避免 selectedTask 切换时反复注册/卸载
+  const selectedTaskRef = useRef(selectedTask);
+  const isCreatingRef = useRef(isCreating);
+  useEffect(() => { selectedTaskRef.current = selectedTask; }, [selectedTask]);
+  useEffect(() => { isCreatingRef.current = isCreating; }, [isCreating]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (mobileDetailVisible) {
-      // 推一个标记,让浏览器左滑/后退能回到任务列表
       try { window.history.pushState({ buddyMobileSubpage: 'task' }, ''); } catch (_) {}
       const onPop = () => {
-        if (selectedTask) setSelectedTask(null);
-        if (isCreating) setIsCreating(false);
+        if (selectedTaskRef.current) setSelectedTask(null);
+        if (isCreatingRef.current) setIsCreating(false);
       };
       window.addEventListener('popstate', onPop);
       return () => window.removeEventListener('popstate', onPop);
     }
-  }, [mobileDetailVisible, selectedTask, isCreating]);
+  }, [mobileDetailVisible]);
   const updateTaskGroupAssignment = (taskId, groupId) => {
     // group_id 已写入数据库，此处仅同步本地 state（乐观更新）
     setTasks((curr) =>
