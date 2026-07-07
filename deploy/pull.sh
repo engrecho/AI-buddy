@@ -10,6 +10,10 @@
 
 set -e
 
+# ── 加载 nvm（非交互 SSH 环境下 yarn/node 不在 PATH） ─────────
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
 # ── 配置 ─────────────────────────────────────────────────────
 PROJECT_DIR="/www/wwwroot/buddy.bajiaolu.cn"
 REPO_BRANCH="main"
@@ -29,35 +33,35 @@ cd "$PROJECT_DIR" || {
 log "========== 开始自动部署 =========="
 
 # 1. 拉取最新代码
-log "[1/5] 拉取 Git 代码..."
+log "[1/8] 拉取 Git 代码..."
 git fetch --all
 git reset --hard "origin/$REPO_BRANCH"
 CURRENT_COMMIT=$(git rev-parse --short HEAD)
 log "当前版本: $CURRENT_COMMIT"
 
 # 2. 安装前端依赖
-log "[2/5] 安装前端依赖..."
+log "[2/8] 安装前端依赖..."
 yarn install --silent
 
 # 3. 构建前端
-log "[3/5] 构建前端..."
+log "[3/8] 构建前端..."
 yarn build
 log "build 目录内容:"
 ls -la "$PROJECT_DIR/build/" | head -5
 
 # 4. 安装后端依赖
-log "[4/5] 安装后端依赖..."
+log "[4/8] 安装后端依赖..."
 cd "$PROJECT_DIR/server"
 yarn install --silent
 cd "$PROJECT_DIR"
 
 # 5. 重启后端服务
-log "[5/6] 重启 PM2 后端服务..."
+log "[5/8] 重启 PM2 后端服务..."
 pm2 restart ai-buddy-api 2>/dev/null || pm2 start ecosystem.config.cjs
 pm2 save
 
 # 6. 增量 SQL 迁移（如果存在）：只跑标记为 migrate-*.sql 且尚未执行过的
-log "[6/6] 检查 SQL 迁移..."
+log "[6/8] 检查 SQL 迁移..."
 MIGRATE_DIR="$PROJECT_DIR/deploy"
 APPLIED_FILE="$MIGRATE_DIR/.applied_migrations"
 
@@ -90,9 +94,20 @@ shopt -u nullglob
 log "========== 部署完成 ($CURRENT_COMMIT) =========="
 
 # 7. 同步 Skills 到 /root/.openclaw/workspace/skills/
-log "[7/7] 同步 Skills 到 openclaw..."
+log "[7/8] 同步 Skills 到 openclaw..."
 bash "$PROJECT_DIR/deploy/sync-skills.sh" >> "$LOG_FILE" 2>&1 || {
   log "  ✗ sync-skills.sh 失败（已记录到 $LOG_FILE）"
 }
+
+# 8. 打包 buddy-skill 供外部下载部署
+log "[8/8] 打包 buddy-skill..."
+SKILL_TARBALL="$PROJECT_DIR/build/buddy-skill.tar.gz"
+cd "$PROJECT_DIR"
+tar -czf "$SKILL_TARBALL" \
+  --exclude='.git' --exclude='node_modules' --exclude='._*' --exclude='.DS_Store' \
+  buddy-skill/
+SKILL_SIZE=$(du -h "$SKILL_TARBALL" | cut -f1)
+log "  ✓ 打包完成: buddy-skill.tar.gz ($SKILL_SIZE)"
+log "  下载链接: https://buddy.bajiaolu.cn/buddy-skill.tar.gz"
 
 log "========== 全部完成 =========="

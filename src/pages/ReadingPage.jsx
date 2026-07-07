@@ -556,7 +556,7 @@ const ReadingPage = () => {
       <div className="flex-1 overflow-y-auto bg-[#f5f5f5] min-w-0">
         <div className="w-full max-w-[1200px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 md:py-5">
 
-          <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-none -mx-1 px-1">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <button
               className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 flex-shrink-0"
               onClick={() => setIsSidebarOpen(true)}
@@ -566,7 +566,7 @@ const ReadingPage = () => {
               <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
             </button>
 
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {["all", "unread", "read"].map((f) => {
                 const countMap = {
                   all: filteredItems.length,
@@ -596,7 +596,7 @@ const ReadingPage = () => {
             </div>
 
             {/* 平台过滤器 */}
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 onClick={() => setPlatformFilter("all")}
                 className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -630,7 +630,10 @@ const ReadingPage = () => {
                 );
               })}
             </div>
+          </div>
 
+          {/* 添加文章按钮 - 固定在筛选栏上方右侧，始终可见 */}
+          <div className="flex items-center justify-end mb-3">
             <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button className="flex-shrink-0 border-0" size="sm" style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}>
