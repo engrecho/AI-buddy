@@ -6,11 +6,21 @@ import { initConfigInteractive, loadConfig } from './lib/config.js';
 import BuddyClient from './lib/client.js';
 import { planOrganize } from './tools/organize.js';
 import { formatOrganizePlan, formatDeletePlan } from './tools/confirm.js';
+import { execFileSync } from 'child_process';
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// 内置解析脚本(buddy-skill 自包含,不再依赖外部 ExtractVideoSkill)
+const EXTRACT_SCRIPT = path.join(__dirname, 'scripts', 'video_extract.cjs');
 
 const args = process.argv.slice(2);
 const command = args[0];
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 function printUsage() {
   console.log(`
@@ -32,7 +42,7 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js list-reading              列出阅读收藏
   node index.js add-reading --url "..."   添加阅读收藏
   node index.js where-is-key              显示配置文件位置
-  node index.js doctor                     环境诊断（检查 Node/配置/ExtractVideoSkill/API）
+  node index.js doctor                     环境诊断（检查 Node/配置/内置解析脚本/API）
   node index.js --version                  显示版本号
 
 整理策略 strategy 取值：
@@ -46,10 +56,12 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js organize-tasks archive-completed
   node index.js delete-task 42
 
-社媒内容（抖音/B站/小红书/公众号等）解析与下载：
-  需先安装 ExtractVideoSkill：
-    git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.all-platform-video-extract
-  然后直接调它的脚本，拿到结果后用本 SKILL 的 add-reading 写入 Buddy。
+社媒内容（抖音/B站/小红书/公众号等 1000+ 平台）— 本 SKILL 已内置解析,无需安装其他依赖：
+  node index.js extract-video "<分享文本或URL>"        仅解析,返回原始信息(标题/封面/直链)
+  node index.js download-video "<分享文本或URL>"        解析 + 下载到服务端(由 AI-Buddy 服务端处理)
+
+解析脚本内置在 buddy-skill/scripts/video_extract.cjs,零依赖,仅用 Node 内置模块。
+下载由 AI-Buddy 服务端统一处理,保存到服务端默认目录,无需用户配置路径。
 `);
 }
 
@@ -342,11 +354,68 @@ async function cmdWhereIsKey() {
   console.log(`  4. 写入 ${getConfigPath()}（chmod 600）`);
 }
 
+// ── 社媒视频解析(内置脚本,仅解析返回原始信息) ──
+async function cmdExtractVideo(flags) {
+  const input = flags._positional?.[0] || flags.input;
+  if (!input) {
+    console.error('✗ 用法: node index.js extract-video "<分享文本或URL>"');
+    process.exit(1);
+  }
+  if (!fs.existsSync(EXTRACT_SCRIPT)) {
+    console.error(`✗ 内置解析脚本缺失: ${EXTRACT_SCRIPT}`);
+    process.exit(1);
+  }
+  try {
+    const stdout = execFileSync(process.execPath, [EXTRACT_SCRIPT, '--json', input], {
+      encoding: 'utf8',
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 90 * 1000,
+    });
+    // 脚本用 __GV_JSON_BEGIN__/END__ marker 包裹原始 JSON
+    const m = stdout.match(/__GV_JSON_BEGIN__([\s\S]*?)__GV_JSON_END__/);
+    if (m) {
+      const data = JSON.parse(m[1].trim());
+      console.log(JSON.stringify(data, null, 2));
+    } else {
+      // 没 marker 就原样输出
+      console.log(stdout);
+    }
+  } catch (err) {
+    console.error('✗ 解析失败:', err.message);
+    if (err.stderr) console.error(err.stderr);
+    process.exit(1);
+  }
+}
+
+// ── 下载/离线(走 AI-Buddy 服务端,保存到服务端默认目录) ──
+async function cmdDownloadVideo(flags) {
+  const input = flags._positional?.[0] || flags.input;
+  if (!input) {
+    console.error('✗ 用法: node index.js download-video "<分享文本或URL>"');
+    process.exit(1);
+  }
+  const cfg = loadConfig();
+  if (!cfg) throw new Error('未找到配置，请先运行: node index.js init');
+  const client = new BuddyClient(cfg);
+  try {
+    const result = await client.request('POST', '/extract/download', { body: { input } });
+    if (result && result.code === 200) {
+      console.log('✓ 下载完成');
+      console.log(`  平台: ${result.host}`);
+      console.log(`  标题: ${result.title}`);
+      console.log(`  离线目录: ${result.offline_path}`);
+    } else {
+      console.error('✗ 下载失败:', result?.message || JSON.stringify(result));
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error('✗ 下载失败:', err.message);
+    process.exit(1);
+  }
+}
+
 async function cmdDoctor() {
-  const fs = await import('node:fs');
-  const path = await import('node:path');
-  const os = await import('node:os');
-  const { getConfigPath, loadConfig } = await import('./lib/config.js');
+  const { getConfigPath } = await import('./lib/config.js');
 
   console.log('buddy-skill doctor — 环境诊断\n');
 
@@ -364,19 +433,11 @@ async function cmdDoctor() {
     console.log(`配置文件: ${cfgPath} ✗ 未找到（运行 node index.js init 初始化）`);
   }
 
-  // 3. ExtractVideoSkill 安装检查
-  const skillDir = process.env.GV_SKILL_DIR
-    || path.join(os.homedir(), '.all-platform-video-extract');
-  const extractScript = path.join(skillDir, 'scripts', 'video_extract.cjs');
-  const downloadScript = path.join(skillDir, 'scripts', 'download_videos.cjs');
-  if (fs.existsSync(extractScript)) {
-    console.log(`ExtractVideoSkill: ${extractScript} ✓`);
+  // 3. 内置解析脚本检查(buddy-skill 自包含,不再依赖外部 ExtractVideoSkill)
+  if (fs.existsSync(EXTRACT_SCRIPT)) {
+    console.log(`内置解析脚本: ${EXTRACT_SCRIPT} ✓`);
   } else {
-    console.log(`ExtractVideoSkill: ✗ 未安装（${extractScript} 不存在）`);
-    console.log(`  安装: git clone https://github.com/engrecho/ExtractVideoSkill.git ${skillDir}`);
-  }
-  if (fs.existsSync(downloadScript)) {
-    console.log(`download_videos.cjs: ✓`);
+    console.log(`内置解析脚本: ✗ 缺失（${EXTRACT_SCRIPT} 不存在,请检查 buddy-skill 完整性）`);
   }
 
   // 4. API 连接测试（仅在配置完整时）
@@ -424,6 +485,8 @@ async function main() {
       case 'add-memo': return cmdAddMemo(flags);
       case 'list-reading': return cmdListReading(flags);
       case 'add-reading': return cmdAddReading(flags);
+      case 'extract-video': return cmdExtractVideo(flags);
+      case 'download-video': return cmdDownloadVideo(flags);
       case 'where-is-key': return cmdWhereIsKey();
       default:
         console.error(`✗ 未知命令: ${command}`);

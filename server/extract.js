@@ -59,10 +59,10 @@ const SPAWN_TIMEOUT_MS = 90 * 1000; // 90s
 
 /**
  * 解析最终的输出根目录
- * @param {string} [userSetting] - 用户在 user_settings 表中保存的 offline_output_root
+ * 下载路径由服务端统一配置,用户不可在客户端修改。
+ * 优先级:GV_OUTPUT 环境变量 > 项目内 data/offline 默认目录
  */
-export function resolveOutputRoot(userSetting) {
-  if (userSetting && userSetting.trim()) return userSetting.trim();
+export function resolveOutputRoot() {
   if (process.env.GV_OUTPUT) return process.env.GV_OUTPUT;
   return DEFAULT_OUTPUT_ROOT;
 }
@@ -298,7 +298,7 @@ export async function parseShare(input) {
  * 解析并下载到 server 端本地目录。
  * 完成后返回离线路径（gv_downloads/<平台>-<vid>-<标题>/）。
  */
-export async function parseAndDownload(input, userSetting) {
+export async function parseAndDownload(input) {
   if (!input || !String(input).trim()) {
     return { code: 400, message: 'input 不能为空' };
   }
@@ -310,7 +310,7 @@ export async function parseAndDownload(input, userSetting) {
     };
   }
 
-  const outputRoot = resolveOutputRoot(userSetting);
+  const outputRoot = resolveOutputRoot();
   fs.mkdirSync(outputRoot, { recursive: true });
 
   return new Promise((resolve) => {
@@ -375,9 +375,9 @@ export async function parseAndDownload(input, userSetting) {
  *   - 子目录 basename（落库形态）：拼回 OUTPUT_ROOT 后再校验
  * 防止路径穿越攻击（../../../etc/passwd）。
  */
-export function resolveOfflinePath(offlinePath, userSetting) {
+export function resolveOfflinePath(offlinePath) {
   if (!offlinePath) return null;
-  const root = path.resolve(resolveOutputRoot(userSetting));
+  const root = path.resolve(resolveOutputRoot());
   // 兼容末尾斜杠
   const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
 
@@ -401,8 +401,8 @@ export function resolveOfflinePath(offlinePath, userSetting) {
  * 列出离线目录下的所有可下载文件。
  * 返回 { ok, dir, files: [{ name, category, size, mtime, ext, download_url, preview_url }] }
  */
-export async function listOfflineFiles(offlinePath, userSetting) {
-  const dir = resolveOfflinePath(offlinePath, userSetting);
+export async function listOfflineFiles(offlinePath) {
+  const dir = resolveOfflinePath(offlinePath);
   if (!dir || !fs.existsSync(dir)) {
     return { ok: false, code: 404, message: '离线目录不存在' };
   }
@@ -455,6 +455,6 @@ export async function listOfflineFiles(offlinePath, userSetting) {
  * @param {string} input 分享文本/URL
  * @returns {Promise<{code, message, host?, vid?, offline_path?, stderr?}>}
  */
-export async function redownload(input, userSetting) {
-  return parseAndDownload(input, userSetting);
+export async function redownload(input) {
+  return parseAndDownload(input);
 }

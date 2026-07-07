@@ -67,8 +67,7 @@ app.post('/api/extract/download', authMiddleware, async (req, res) => {
     return res.json({ data: null, error: { message: '缺少 input 字段' } });
   }
   try {
-    const settings = await getUserSetting(req.user.id);
-    const result = await parseAndDownload(input, settings.offline_output_root);
+    const result = await parseAndDownload(input);
     return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
   } catch (err) {
     console.error('extract/download error:', err);
@@ -83,8 +82,7 @@ app.post('/api/extract/redownload', authMiddleware, async (req, res) => {
     return res.json({ data: null, error: { message: '缺少 input 字段' } });
   }
   try {
-    const settings = await getUserSetting(req.user.id);
-    const result = await redownload(input, settings.offline_output_root);
+    const result = await redownload(input);
     return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
   } catch (err) {
     console.error('extract/redownload error:', err);
@@ -110,8 +108,7 @@ app.get('/api/reading/:id/files', authMiddleware, async (req, res) => {
     if (!row.is_offline || !row.offline_path) {
       return res.json({ data: { ok: true, dir: null, files: [], message: '该文章未离线' } });
     }
-    const settings = await getUserSetting(req.user.id);
-    const result = await listOfflineFiles(row.offline_path, settings.offline_output_root);
+    const result = await listOfflineFiles(row.offline_path);
     if (!result.ok) {
       return res.json({ data: result, error: { message: result.message } });
     }
@@ -141,8 +138,7 @@ app.get('/api/reading-files/:dirName/:fileName', authMiddleware, async (req, res
     }
     // 找到匹配的 reading_item，用它真正的 offline_path 拼文件
     const matched = rows[0];
-    const settings = await getUserSetting(req.user.id);
-    const safePath = resolveOfflinePath(matched.offline_path, settings.offline_output_root);
+    const safePath = resolveOfflinePath(matched.offline_path);
     if (!safePath) {
       return res.status(400).json({ data: null, error: { message: '路径越界' } });
     }
@@ -1093,8 +1089,7 @@ app.post('/api/v1/extract/download', apiKeyAuth, async (req, res) => {
     return res.json({ data: null, error: { message: '缺少 input 字段' } });
   }
   try {
-    const settings = await getUserSetting(req.user.id);
-    const result = await parseAndDownload(input, settings.offline_output_root);
+    const result = await parseAndDownload(input);
     return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });

@@ -168,46 +168,12 @@ const ReadingPage = () => {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [downloading, setDownloading] = useState(false);
-  const [offlineRoot, setOfflineRoot] = useState("");  // 服务端保存地址
-  const [offlinePathDialogOpen, setOfflinePathDialogOpen] = useState(false);
-  const [offlinePathInput, setOfflinePathInput] = useState("");
   const urlFetchedRef = useRef("");
 
   useEffect(() => {
     fetchItems();
     fetchTags();
-    fetchOfflineRoot();
   }, []);
-
-  // ── 获取 / 保存离线地址 ──
-  const fetchOfflineRoot = async () => {
-    try {
-      const r = await fetch('/api/user-settings', { credentials: 'include' });
-      if (r.ok) {
-        const j = await r.json();
-        setOfflineRoot(j.offline_output_root || '');
-        setOfflinePathInput(j.offline_output_root || '');
-      }
-    } catch { /* 失败时静默——默认值由服务端兜底 */ }
-  };
-  const openOfflinePathSettings = () => {
-    setOfflinePathInput(offlineRoot || '');
-    setOfflinePathDialogOpen(true);
-  };
-  const saveOfflinePath = async () => {
-    try {
-      const r = await fetch('/api/user-settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ offline_output_root: offlinePathInput.trim() }),
-      });
-      if (r.ok) {
-        setOfflineRoot(offlinePathInput.trim());
-        setOfflinePathDialogOpen(false);
-      }
-    } catch { /* ignore */ }
-  };
 
   // ── 数据获取 ──────────────────────────────────────────────────────
   const fetchItems = async () => {
@@ -793,27 +759,10 @@ const ReadingPage = () => {
                           <div className="text-xs text-gray-500 leading-snug">
                             视频/图/文章 markdown 下载到服务端
                           </div>
-                          {form.is_offline && offlineRoot && (
-                            <div className="text-[11px] text-gray-400 mt-0.5 truncate" title={offlineRoot}>
-                              保存到: {offlineRoot}
-                            </div>
-                          )}
                         </div>
                       </label>
                     </div>
                   </div>
-                  {form.is_offline && (
-                    <div className="-mt-1 text-[11px] text-gray-500 flex items-center justify-between">
-                      <span>如需修改保存地址,请到「配置 → 用户设置」调整。</span>
-                      <button
-                        type="button"
-                        onClick={openOfflinePathSettings}
-                        className="text-indigo-500 hover:text-indigo-700 hover:underline"
-                      >
-                        立即设置
-                      </button>
-                    </div>
-                  )}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-sm font-medium">标签</label>
@@ -855,45 +804,6 @@ const ReadingPage = () => {
                     </Button>
                   </div>
                 </form>
-              </DialogContent>
-            </Dialog>
-
-            {/* 离线保存地址设置弹窗 */}
-            <Dialog open={offlinePathDialogOpen} onOpenChange={setOfflinePathDialogOpen}>
-              <DialogContent className="w-full max-w-md mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Download className="h-4 w-4" />
-                    设置离线保存地址
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3 mt-2">
-                  <p className="text-sm text-gray-600">
-                    视频、图集、公众号文章 markdown 等离线资源会保存到服务端的这个目录。
-                  </p>
-                  <div>
-                    <label className="text-sm font-medium mb-1.5 block">保存地址(服务端绝对路径)</label>
-                    <Input
-                      value={offlinePathInput}
-                      onChange={(e) => setOfflinePathInput(e.target.value)}
-                      placeholder="/data/buddy/offline"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      留空将使用服务端默认地址;请确保目录存在且有写权限。
-                    </p>
-                  </div>
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="outline" onClick={() => setOfflinePathDialogOpen(false)}>取消</Button>
-                    <Button
-                      type="button"
-                      onClick={saveOfflinePath}
-                      className="border-0"
-                      style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}
-                    >
-                      保存
-                    </Button>
-                  </div>
-                </div>
               </DialogContent>
             </Dialog>
           </div>

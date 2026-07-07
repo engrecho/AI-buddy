@@ -1,6 +1,6 @@
 ---
 name: buddy-skill
-description: AI-Buddy 的官方 SKILL——AI-Buddy 是一个为碎片化内容而生的轻量工作空间，本 SKILL 让 AI 助手通过 API Key 安全地查询、修改、整合用户在 AI-Buddy 中的任务、备忘、阅读收藏、随记。当用户提到"我的任务"、"添加任务"、"整理任务"、"记个备忘"、"把今天读到的文章存下来"、"我有哪些 to do"时使用此 skill。删除和整理任务前必须先列计划并取得用户确认。社媒内容（抖音/B站/小红书/公众号等）解析与下载需配合独立 SKILL `ExtractVideoSkill`（仓库 https://github.com/engrecho/ExtractVideoSkill，安装到 `~/.all-platform-video-extract/`）。
+description: AI-Buddy 的官方 SKILL——AI-Buddy 是一个为碎片化内容而生的轻量工作空间，本 SKILL 让 AI 助手通过 API Key 安全地查询、修改、整合用户在 AI-Buddy 中的任务、备忘、阅读收藏、随记。当用户提到"我的任务"、"添加任务"、"整理任务"、"记个备忘"、"把今天读到的文章存下来"、"我有哪些 to do"时使用此 skill。删除和整理任务前必须先列计划并取得用户确认。本 SKILL 已内置社媒内容（抖音/B站/小红书/公众号等 1000+ 平台）解析能力，用户发来视频分享文本或 URL 时直接用 extract-video 命令解析，需要下载时用 download-video 命令（由 AI-Buddy 服务端处理下载），无需安装任何外部 SKILL。
 ---
 
 # buddy-skill
@@ -97,70 +97,20 @@ node index.js organize-tasks archive-completed
 - 配置文件不参与任何网络请求
 - LLM provider（OpenAI / Anthropic）只看到工具调用结果，看不到 API Key
 
-## 依赖与子技能
+## 内置社媒解析能力
 
-buddy-skill 只负责访问 AI-Buddy 的数据。**社媒内容解析（抖音 / B 站 / 小红书 / 公众号 / YouTube / TikTok / 微博 / 快手 / 西瓜 / 知乎 等 1000+ 平台）依赖独立的 ExtractVideoSkill**，由 ExtractVideoSkill 提供底层解析和下载能力。
+buddy-skill **已内置**社媒内容解析（抖音 / B 站 / 小红书 / 公众号 / YouTube / TikTok / 微博 / 快手 / 西瓜 / 知乎 等 1000+ 平台），**不依赖任何外部 SKILL**。解析脚本位于 `buddy-skill/scripts/video_extract.cjs`，零依赖（仅用 Node 内置模块）。
 
-### ExtractVideoSkill 仓库
+### 两种行为模式
 
-- 仓库：<https://github.com/engrecho/ExtractVideoSkill.git>
-- 安装位置：`~/.all-platform-video-extract/`（独立 SKILL，不再绑定到 `~/.workbuddy/skills/`）
-- 提供：
-  - `scripts/video_extract.cjs --json "<分享文本>"` — 解析（返回平台 / 标题 / 封面 / 资源列表）
-  - `scripts/download_videos.cjs "<分享文本>"` — 解析 + 下载到本地
-  - `scripts/init_config.cjs` — 首次使用交互式配置默认保存地址与解析服务
+| 模式 | CLI 命令 | 说明 |
+|------|---------|------|
+| **仅解析**（默认） | `node index.js extract-video "<分享文本或URL>"` | 调用内置脚本，返回**原始信息**（标题/封面/各清晰度直链），不下载 |
+| **下载/离线** | `node index.js download-video "<分享文本或URL>"` | 走 AI-Buddy 服务端 `POST /api/v1/extract/download`，由服务端处理下载，保存到服务端默认目录 |
 
-### 安装与检测
+> **设计原则**：buddy-skill 只负责"获取原始信息"；下载过程由 AI-Buddy 服务端统一处理，用户无需配置保存路径。
 
-```bash
-# 方式 1：直接克隆
-git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.all-platform-video-extract
-
-# 方式 2：放在本地任意目录
-git clone https://github.com/engrecho/ExtractVideoSkill.git ~/tools/ExtractVideoSkill
-# 然后把 SKILL 路径指过去(env GV_SKILL_DIR 或 server .env)
-export GV_SKILL_DIR=~/tools/ExtractVideoSkill
-```
-
-- AI 助手在调用社媒能力前，必须先确认 `~/.all-platform-video-extract/scripts/` 存在（可通过 `ls` 或 `node -v` 验证）
-- 没装 → 提示用户「需要安装 ExtractVideoSkill（抖音/B站等解析依赖），是否克隆到 `~/.all-platform-video-extract`？」并执行克隆
-- 已装但脚本缺失 → 提示「ExtractVideoSkill 目录已存在但缺少 scripts/，请检查仓库完整性或重新克隆」
-- 脚本运行失败 → 把 stderr 末尾 10-20 行原样展示给用户，不要编造成功
-
-### 调用方式（spawn Node 进程）
-
-```bash
-# 解析
-node ~/.all-platform-video-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
-
-# 下载到本地
-# 默认输出由 <SKILL_DIR>/downloads/ 决定；
-# 首次使用会引导填写保存地址并写入 ~/.all-platform-video-extract/config.json
-node ~/.all-platform-video-extract/scripts/download_videos.cjs "<分享文本或URL>"
-
-# 也支持环境变量：
-#   GV_OUTPUT=<输出根目录>   优先级最高
-#   GV_HOST=<解析服务>        默认 https://greenvideo.cc/
-#   GV_NODE=<node 路径>       默认 process.execPath
-```
-
-### AI-Buddy 离线缓存地址
-
-AI-Buddy 自身的「阅读列表 → 离线到本地」通过后端 `POST /api/extract/download` 调用 ExtractVideoSkill 完成。
-每个用户的默认保存地址保存在 `user_settings` 表(`offline_output_root` 字段)，可在 AI-Buddy 网页「阅读 → 添加文章 → 勾选"离线到本地"」时点击「立即设置」修改。
-
-AI 助手要新增/查询用户离线地址时，可调用：
-
-```bash
-# 读取
-curl -b cookies.txt https://buddy.bajiaolu.cn/api/user-settings
-# 写入
-curl -b cookies.txt -X PUT -H 'Content-Type: application/json' \
-     -d '{"offline_output_root":"/data/buddy/offline"}' \
-     https://buddy.bajiaolu.cn/api/user-settings
-```
-
-### 解析结果结构（`--json` 模式，stdout 用 `__GV_JSON_BEGIN__` / `__GV_JSON_END__` marker 分隔）
+### 解析结果结构（`extract-video` 输出，JSON）
 
 ```json
 {
@@ -217,16 +167,16 @@ curl -b cookies.txt -X PUT -H 'Content-Type: application/json' \
 
 ### 用户发来一个抖音/B站/小红书/公众号等分享链接或复制文本
 
-**核心思路**：buddy-skill 不内置社媒解析，AI 助手先调 ExtractVideoSkill 拿到结构化结果，再写入阅读列表。
+**核心思路**：buddy-skill 已内置社媒解析，AI 助手直接调 `extract-video` 命令拿到结构化结果，再写入阅读列表。
 
 **默认行为：自动存入阅读列表**（**不下载**，只解析元信息）
 
 1. AI 看到分享文本或 URL
-2. AI 调 ExtractVideoSkill 解析：
+2. AI 调 buddy-skill 内置解析：
    ```bash
-   node ~/.all-platform-video-extract/scripts/video_extract.cjs --json "<分享文本>"
+   node index.js extract-video "<分享文本>"
    ```
-3. 从返回的 `__GV_JSON_BEGIN__/END__` 之间提取 JSON：
+3. 从返回的 JSON 中提取：
    - `data.vid` → vid
    - `data.host` → 规范化成 platform（见上方平台表）
    - `data.displayTitle` → title
@@ -234,19 +184,19 @@ curl -b cookies.txt -X PUT -H 'Content-Type: application/json' \
 4. AI 调 `createReading(...)` 写入阅读列表，传入 `platform`、`cover_url`
 5. AI 向用户汇报："已加入阅读列表（{平台} - {标题}）"
 
-**如果用户明确说"下载"、"存到本地"、"离线"**，则调 ExtractVideoSkill 的 download 脚本：
+**如果用户明确说"下载"、"存到本地"、"离线"**，则走服务端下载：
 
 1. AI 执行：
    ```bash
-   node ~/.all-platform-video-extract/scripts/download_videos.cjs "<分享文本>"
+   node index.js download-video "<分享文本>"
    ```
-2. 从 stdout 解析 `[OK]   <host>/<vid>  -> <dir>` 那一行拿 `offline_path`
+2. 服务端解析 + 下载到默认目录，返回 `offline_path`
 3. AI 调 `createReading(...)` 时把 `is_offline=true`、`offline_path=...` 带上
-4. AI 汇报："已下载到 {offline_path}"
+4. AI 汇报："已离线保存到服务端"
 
 **如果不确定要不要下载**，AI 应主动询问用户；只有在用户说"自动下载所有"之类的偏好时才跳过询问。
 
-**如果没有安装 ExtractVideoSkill**，AI 应主动询问用户是否从 <https://github.com/engrecho/ExtractVideoSkill.git> 克隆到 `~/.all-platform-video-extract/`；用户同意后执行 `git clone`，再继续上面流程。
+> 下载过程由 AI-Buddy 服务端统一处理，保存路径由服务端配置，用户无需也无法在客户端配置。
 
 ### 用户说"看看我最近存的抖音"
 
@@ -359,8 +309,10 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js add-memo --content "..."  创建备忘
   node index.js list-reading              列出阅读收藏
   node index.js add-reading --url "..."   添加阅读收藏
+  node index.js extract-video "<分享文本>"  解析社媒内容(内置,返回原始信息)
+  node index.js download-video "<分享文本>"  解析+下载(由服务端处理)
   node index.js where-is-key              显示配置文件位置
-  node index.js doctor                     环境诊断（检查 Node/配置/ExtractVideoSkill/API）
+  node index.js doctor                     环境诊断（检查 Node/配置/内置脚本/API）
   node index.js --version                  显示版本号
 
 整理策略 strategy 取值：
@@ -368,10 +320,9 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   set-priority-by-due    根据截止日期自动设置优先级
   clean-duplicates       归档重复任务
 
-社媒内容（抖音/B站/小红书/公众号等）解析与下载需先安装 ExtractVideoSkill：
-  git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.all-platform-video-extract
-  node ~/.all-platform-video-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
-  node ~/.all-platform-video-extract/scripts/download_videos.cjs "<分享文本或URL>"
+社媒内容（抖音/B站/小红书/公众号等 1000+ 平台）— 本 SKILL 已内置解析,无需安装外部依赖：
+  node index.js extract-video "<分享文本或URL>"    仅解析,返回原始信息
+  node index.js download-video "<分享文本或URL>"    解析 + 下载(服务端处理)
 ```
 
 ## 故障排查
@@ -391,7 +342,7 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
 # 显示配置文件位置
 node index.js where-is-key
 
-# 环境诊断（检查 Node/配置/ExtractVideoSkill/API 连接）
+# 环境诊断（检查 Node/配置/内置解析脚本/API 连接）
 node index.js doctor
 
 # 测试连接
