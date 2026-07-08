@@ -13,6 +13,8 @@ module.exports = {
       PORT: '3000',
       // 必填：JWT 签名密钥，部署后请改成你自己的随机字符串
       JWT_SECRET: 'ai-buddy-production-please-change-this-secret',
+      // 离线下载统一根目录（所有下载文件存这里，前端/API 均从此读取）
+      GV_OUTPUT: '/www/wwwroot/buddy.bajiaolu.cn/data/offline',
     },
     instances: 1,
     autorestart: true,

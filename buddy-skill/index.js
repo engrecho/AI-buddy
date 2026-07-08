@@ -483,10 +483,11 @@ async function cmdDownloadVideo(flags) {
   try {
     const result = await client.request('POST', '/extract/download', { body: { input } });
     if (result && result.code === 200) {
-      console.log('✓ 下载完成');
+      console.log('✓ 下载完成（文件已存到 AI-Buddy 服务端，与 Agent 所在机器无关）');
       console.log(`  平台: ${result.host}`);
       console.log(`  标题: ${result.title}`);
       console.log(`  离线目录: ${result.offline_path}`);
+      console.log('  提示：文件在服务端统一目录，用户从 Buddy 网页/App 的阅读列表查看，请勿在本地另存。');
     } else {
       console.error('✗ 下载失败:', result?.message || JSON.stringify(result));
       process.exit(1);

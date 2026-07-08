@@ -2,6 +2,10 @@
 /**
  * all-platform-video-extract 下载脚本
  *
+ * ⚠️ 仅供 AI-Buddy 服务端内部调用（server/extract.js 通过 GV_OUTPUT 环境变量触发下载）。
+ *    Agent / 用户请勿直接运行本脚本 —— 应使用 `node index.js download-video` 走服务端 API，
+ *    否则文件会下载到 Agent 所在机器而非 AI-Buddy 服务端，用户在网页上根本看不到。
+ *
  * 解析一个或多个视频链接，把所有可下载资源按规范保存到本地。
  *
  * 用法：
