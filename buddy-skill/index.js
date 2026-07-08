@@ -424,8 +424,17 @@ async function cmdAddReading(flags) {
   }
 
   const created = await client.createReading(data);
-  console.log('✓ 阅读收藏已添加');
-  console.log(`  ID: ${created.id}`);
+  const sum = created.summary ? (created.summary.length > 50 ? created.summary.slice(0, 50) + '…' : created.summary) : '';
+  const tags = Array.isArray(created.tags) && created.tags.length ? created.tags.join(' / ') : '';
+  const loc = created.is_offline ? 'AI-Buddy → 阅读收藏（已离线，文件存服务端）' : 'AI-Buddy → 阅读收藏（网页/App 可查看）';
+  console.log('✓ 已保存到【阅读】列表');
+  console.log(`  ID:    ${created.id}`);
+  console.log(`  标题:  ${created.title || created.url}`);
+  if (created.url) console.log(`  链接:  ${created.url}`);
+  if (sum) console.log(`  摘要:  ${sum}`);
+  if (tags) console.log(`  标签:  ${tags}`);
+  if (created.platform) console.log(`  平台:  ${created.platform}`);
+  console.log(`  位置:  ${loc}`);
 }
 
 async function cmdWhereIsKey() {
