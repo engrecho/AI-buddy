@@ -55,9 +55,9 @@ cd "$PROJECT_DIR/server"
 yarn install --silent
 cd "$PROJECT_DIR"
 
-# 5. 重启后端服务
+# 5. 重启后端服务（用 startOrReload + --update-env 确保 ecosystem.config.cjs 的 env 真正生效）
 log "[5/8] 重启 PM2 后端服务..."
-pm2 restart ai-buddy-api 2>/dev/null || pm2 start ecosystem.config.cjs
+pm2 startOrReload ecosystem.config.cjs --update-env 2>/dev/null || pm2 start ecosystem.config.cjs
 pm2 save
 
 # 6. 增量 SQL 迁移（如果存在）：只跑标记为 migrate-*.sql 且尚未执行过的

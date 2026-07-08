@@ -416,6 +416,16 @@ async function processOne(input) {
 // ---------- 入口 ----------
 
 async function main() {
+  // ⚠️ 服务端专用：必须由 AI-Buddy 服务端通过 GV_OUTPUT 环境变量调用。
+  // 直接运行(无 GV_OUTPUT)一律拒绝，避免文件下载到 skill 所在目录 / openclaw 目录。
+  if (!process.env.GV_OUTPUT) {
+    console.error('⚠️ 本脚本仅供 AI-Buddy 服务端内部调用（需通过 GV_OUTPUT 环境变量指定输出目录）。\n' +
+      '   Agent / 用户请使用: node index.js download-video "<分享文本>"\n' +
+      '   （走服务端 API，文件存到服务端 data/offline，与 Agent 所在机器无关）。\n' +
+      '   直接运行本脚本会把文件下载到非预期位置，已拒绝执行。');
+    process.exit(2);
+  }
+
   let inputs = process.argv.slice(2);
   if (inputs.length === 0) {
     console.log(`用法：
