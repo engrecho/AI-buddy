@@ -397,8 +397,10 @@ const Index = () => {
     setConfigOpen(false);
     setSettingsOpen(false);
   };
-  const openSettings = (section = 'profile') => {
-    setSettingsSection(section);
+  const openSettings = (section) => {
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    const defaultSection = isMobile ? null : 'profile';
+    setSettingsSection(section ?? defaultSection);
     setSettingsOpen(true);
     setConfigOpen(false);
   };

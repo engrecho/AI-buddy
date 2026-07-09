@@ -6,15 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft, User as UserIcon, Lock, Key, Users, Tag, FolderOpen,
   Save, LogOut, Copy, Trash2, Plus, Eye, EyeOff, AlertTriangle,
-  CheckCircle2, Loader2, Camera, Upload,
+  CheckCircle2, Loader2, Camera, ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { MembersPanel, TagsPanel, GroupsPanel } from '@/components/ConfigSection';
-
-// ════════════════════════════════════════════════════════════════
-// 设置中心：桌面二级侧边栏 + 移动端全屏
-// ════════════════════════════════════════════════════════════════
 
 const SECTIONS = [
   { id: 'profile', label: '个人资料', icon: UserIcon },
@@ -25,26 +21,21 @@ const SECTIONS = [
   { id: 'groups', label: '分组', icon: FolderOpen },
 ];
 
-export function SettingsCenter({ onBack, defaultSection = 'profile' }) {
+export function SettingsCenter({ onBack, defaultSection = null }) {
   const [section, setSection] = useState(defaultSection);
   const { user, login, logout } = useAuth();
 
   return (
-    <div className='flex flex-col h-full bg-white min-h-0'>
-      {/* 移动端顶部返回栏 */}
+    <div className='flex flex-col h-full bg-gray-50 min-h-0'>
+      {/* 移动端顶部栏 */}
       <header
         className='md:hidden flex-shrink-0 bg-white flex items-center px-4 gap-3 border-b border-gray-100'
         style={{ height: 'calc(44px + env(safe-area-inset-top, 0px))', paddingTop: 'calc(env(safe-area-inset-top, 0px))' }}
       >
-        <Button variant='ghost' size='sm' onClick={onBack} className='p-2 h-9 w-9 -ml-1'>
+        <Button variant='ghost' size='sm' onClick={section ? () => setSection(null) : onBack} className='p-2 h-9 w-9 -ml-1'>
           <ArrowLeft className='h-5 w-5' />
         </Button>
-        <span className='font-semibold text-gray-800'>设置</span>
-        <div className='ml-auto flex items-center'>
-          <Button variant='ghost' size='sm' onClick={() => logout()} className='text-red-500 hover:bg-red-50'>
-            <LogOut className='h-4 w-4' />
-          </Button>
-        </div>
+        <span className='font-semibold text-gray-800'>{section ? SECTIONS.find(s => s.id === section)?.label : '设置'}</span>
       </header>
 
       <div className='flex flex-1 min-h-0 overflow-hidden'>
@@ -78,60 +69,108 @@ export function SettingsCenter({ onBack, defaultSection = 'profile' }) {
           </div>
         </aside>
 
-        {/* 移动端横向分类 */}
-        <div className='md:hidden flex-shrink-0 bg-white border-b border-gray-100'>
-          <div className='overflow-x-auto whitespace-nowrap py-2 px-3 scrollbar-hide' style={{ WebkitOverflowScrolling: 'touch' }}>
-            {SECTIONS.map(({ id, label, icon: Icon }) => {
-              const active = section === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => setSection(id)}
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors mr-2 last:mr-0 ${
-                    active ? 'text-[#2d4a00] bg-[#bbea3b]' : 'text-gray-500 bg-gray-100'
-                  }`}
-                >
-                  <Icon className='h-3.5 w-3.5' /> {label}
-                </button>
-              );
-            })}
+        {/* 桌面端内容区 */}
+        <main className='hidden md:block flex-1 overflow-y-auto min-h-0 bg-gray-50'>
+          <div className='max-w-2xl mx-auto px-4 py-6'>
+            {renderContent()}
           </div>
-        </div>
+        </main>
 
-        {/* 内容区 */}
-        <main className='flex-1 overflow-y-auto min-h-0 bg-gray-50'>
-          <div className='max-w-2xl mx-auto px-4 py-5 md:py-6'>
-            {/* 移动端用户卡片 */}
-            <div className='md:hidden mb-4 bg-white rounded-xl p-4 border border-gray-100'>
-              <div className='flex items-center gap-3'>
-                <div className='w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xl font-semibold overflow-hidden flex-shrink-0'>
-                  {user?.avatar_url ? (
-                    <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
-                  ) : (
-                    (user?.nickname || user?.username || 'U')[0].toUpperCase()
-                  )}
-                </div>
-                <div className='flex-1 min-w-0'>
-                  <div className='font-semibold text-gray-800 truncate'>{user?.nickname || user?.username || '用户'}</div>
-                  <div className='text-xs text-gray-500'>{user?.username}</div>
-                </div>
-              </div>
-            </div>
-
-            {section === 'profile' && <ProfilePanel user={user} login={login} />}
-            {section === 'password' && <PasswordPanel />}
-            {section === 'api-key' && <ApiKeyPanel />}
-            {section === 'members' && <MembersPanel />}
-            {section === 'tags' && <TagsPanel />}
-            {section === 'groups' && <GroupsPanel />}
+        {/* 移动端内容区 */}
+        <main className='md:hidden flex-1 overflow-y-auto min-h-0'>
+          <div className='px-4 py-4'>
+            {!section ? (
+              <MobileSettingsList user={user} onSelect={setSection} onLogout={logout} />
+            ) : (
+              <MobileSectionContent section={section} user={user} login={login} />
+            )}
           </div>
         </main>
       </div>
     </div>
   );
+
+  function renderContent() {
+    if (!section) {
+      return (
+        <div className='space-y-4'>
+          <div className='bg-white rounded-xl p-5 border border-gray-100'>
+            <p className='text-gray-500 text-sm'>请从左侧菜单选择设置项</p>
+          </div>
+        </div>
+      );
+    }
+    if (section === 'profile') return <ProfilePanel user={user} login={login} />;
+    if (section === 'password') return <PasswordPanel />;
+    if (section === 'api-key') return <ApiKeyPanel />;
+    if (section === 'members') return <MembersPanel />;
+    if (section === 'tags') return <TagsPanel />;
+    if (section === 'groups') return <GroupsPanel />;
+    return null;
+  }
 }
 
-// ── 个人资料面板（头像上传 + 昵称） ───────────────────────────────
+function MobileSettingsList({ user, onSelect, onLogout }) {
+  return (
+    <div className='space-y-4'>
+      {/* 用户信息卡片 */}
+      <div className='bg-white rounded-xl p-4 border border-gray-100'>
+        <div className='flex items-center gap-4'>
+          <div className='w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-2xl font-semibold overflow-hidden flex-shrink-0 shadow-sm'>
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
+            ) : (
+              (user?.nickname || user?.username || 'U')[0].toUpperCase()
+            )}
+          </div>
+          <div className='flex-1 min-w-0'>
+            <div className='font-semibold text-gray-900 text-lg truncate'>{user?.nickname || user?.username || '用户'}</div>
+            <div className='text-sm text-gray-500 truncate'>{user?.username}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 设置项列表 */}
+      <div className='bg-white rounded-xl border border-gray-100 overflow-hidden'>
+        {SECTIONS.map(({ id, label, icon: Icon }, idx) => (
+          <button
+            key={id}
+            onClick={() => onSelect(id)}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 active:bg-gray-50 transition-colors ${
+              idx > 0 ? 'border-t border-gray-50' : ''
+            }`}
+          >
+            <div className='w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0'>
+              <Icon className='h-4 w-4' style={{ color: '#5a7a00' }} />
+            </div>
+            <span className='flex-1 text-left text-base text-gray-800'>{label}</span>
+            <ChevronRight className='h-4 w-4 text-gray-300 flex-shrink-0' />
+          </button>
+        ))}
+      </div>
+
+      {/* 退出登录 */}
+      <button
+        onClick={onLogout}
+        className='w-full bg-white rounded-xl border border-red-100 py-3.5 text-red-500 font-medium text-base active:bg-red-50 transition-colors'
+      >
+        退出登录
+      </button>
+    </div>
+  );
+}
+
+function MobileSectionContent({ section, user, login }) {
+  if (section === 'profile') return <ProfilePanel user={user} login={login} />;
+  if (section === 'password') return <PasswordPanel />;
+  if (section === 'api-key') return <ApiKeyPanel />;
+  if (section === 'members') return <MembersPanel />;
+  if (section === 'tags') return <TagsPanel />;
+  if (section === 'groups') return <GroupsPanel />;
+  return null;
+}
+
+// ── 个人资料面板 ────────────────────────────────────────────────
 function ProfilePanel({ user, login }) {
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
@@ -181,12 +220,9 @@ function ProfilePanel({ user, login }) {
   };
 
   return (
-    <div className='space-y-6 bg-white rounded-xl p-4 border border-gray-100'>
-      <h2 className='text-lg font-semibold text-gray-800 hidden md:block'>个人资料</h2>
-
-      {/* 头像上传 */}
-      <div className='flex flex-col items-center gap-3'>
-        <div className='relative group'>
+    <div className='space-y-5 bg-white rounded-xl p-4 border border-gray-100'>
+      <div className='flex flex-col items-center gap-3 py-4'>
+        <label className='relative cursor-pointer'>
           <div className='w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-3xl font-semibold overflow-hidden shadow-sm'>
             {avatarUrl ? (
               <img src={avatarUrl} alt='avatar' className='w-full h-full object-cover' />
@@ -194,29 +230,27 @@ function ProfilePanel({ user, login }) {
               (user?.nickname || user?.username || 'U')[0].toUpperCase()
             )}
           </div>
-          <label className='absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white'>
-            {uploading ? <Loader2 className='h-6 w-6 animate-spin' /> : <Camera className='h-6 w-6' />}
-            <input type='file' accept='image/jpeg,image/png,image/webp,image/gif' className='hidden'
-              onChange={(e) => handleUpload(e.target.files?.[0])} disabled={uploading} />
-          </label>
-        </div>
-        <p className='text-xs text-gray-400'>点击头像上传 · jpg/png/webp · 不超过 2MB</p>
+          <div className='absolute bottom-0 right-0 w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm'>
+            {uploading ? <Loader2 className='h-4 w-4 animate-spin text-gray-600' /> : <Camera className='h-4 w-4 text-gray-600' />}
+          </div>
+          <input type='file' accept='image/jpeg,image/png,image/webp,image/gif' className='hidden'
+            onChange={(e) => handleUpload(e.target.files?.[0])} disabled={uploading} />
+        </label>
+        <p className='text-xs text-gray-400'>点击头像更换 · jpg/png/webp · 不超过 2MB</p>
       </div>
 
-      {/* 昵称 */}
       <div className='space-y-2'>
-        <Label htmlFor='nickname'>昵称</Label>
-        <Input id='nickname' value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder='输入你的昵称' className='h-12 text-base' />
+        <Label htmlFor='nickname' className='text-sm text-gray-600'>昵称</Label>
+        <Input id='nickname' value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder='输入你的昵称' className='h-12 text-base bg-gray-50' />
       </div>
 
-      {/* 用户名只读 */}
       <div className='space-y-2'>
-        <Label htmlFor='username'>用户名</Label>
-        <Input id='username' value={user?.username || ''} disabled className='h-12 bg-gray-50 text-gray-500' />
+        <Label htmlFor='username' className='text-sm text-gray-600'>用户名</Label>
+        <Input id='username' value={user?.username || ''} disabled className='h-12 bg-gray-100 text-gray-500' />
         <p className='text-xs text-gray-400'>用户名注册后不可修改</p>
       </div>
 
-      <Button onClick={handleSave} disabled={saving} className='w-full h-12 text-base border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
+      <Button onClick={handleSave} disabled={saving} className='w-full h-12 text-base border-0 mt-2' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
         {saving ? <Loader2 className='h-4 w-4 mr-2 animate-spin' /> : <Save className='w-4 h-4 mr-2' />}
         {saving ? '保存中...' : '保存修改'}
       </Button>
@@ -254,18 +288,19 @@ function PasswordPanel() {
 
   return (
     <div className='space-y-4 bg-white rounded-xl p-4 border border-gray-100'>
-      <h2 className='text-lg font-semibold text-gray-800 hidden md:block'>修改密码</h2>
-      <div className='space-y-2'>
-        <Label htmlFor='old-password'>原密码</Label>
-        <Input id='old-password' type='password' value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder='请输入原密码' className='h-12 text-base' />
-      </div>
-      <div className='space-y-2'>
-        <Label htmlFor='new-password'>新密码</Label>
-        <Input id='new-password' type='password' value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder='请输入新密码（至少6位）' className='h-12 text-base' />
-      </div>
-      <div className='space-y-2'>
-        <Label htmlFor='confirm-password'>确认新密码</Label>
-        <Input id='confirm-password' type='password' value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder='请再次输入新密码' className='h-12 text-base' />
+      <div className='space-y-4'>
+        <div className='space-y-2'>
+          <Label htmlFor='old-password' className='text-sm text-gray-600'>原密码</Label>
+          <Input id='old-password' type='password' value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder='请输入原密码' className='h-12 text-base bg-gray-50' />
+        </div>
+        <div className='space-y-2'>
+          <Label htmlFor='new-password' className='text-sm text-gray-600'>新密码</Label>
+          <Input id='new-password' type='password' value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder='请输入新密码（至少6位）' className='h-12 text-base bg-gray-50' />
+        </div>
+        <div className='space-y-2'>
+          <Label htmlFor='confirm-password' className='text-sm text-gray-600'>确认新密码</Label>
+          <Input id='confirm-password' type='password' value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder='请再次输入新密码' className='h-12 text-base bg-gray-50' />
+        </div>
       </div>
       <Button onClick={handleSubmit} disabled={saving} className='w-full h-12 text-base border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
         {saving ? <Loader2 className='h-4 w-4 mr-2 animate-spin' /> : <Lock className='w-4 h-4 mr-2' />}
@@ -343,9 +378,6 @@ function ApiKeyPanel() {
 
   return (
     <div className='space-y-4 bg-white rounded-xl p-4 border border-gray-100'>
-      <h2 className='text-lg font-semibold text-gray-800 hidden md:block'>API Key 管理</h2>
-
-      {/* 新创建一次性显示 */}
       {newlyCreated && (
         <div className='p-3 border border-amber-300 bg-amber-50 rounded-lg space-y-2'>
           <div className='flex items-center gap-2 text-amber-900 text-sm font-medium'>
@@ -365,28 +397,26 @@ function ApiKeyPanel() {
         </div>
       )}
 
-      {/* 创建 */}
       <div className='flex gap-2'>
         <Input placeholder='Key 名称（如：Claude SKILL）' value={newKeyName}
-          onChange={(e) => setNewKeyName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreate()} className='h-12 text-base' />
-        <Button onClick={handleCreate} disabled={creatingKey} size='sm' className='border-0 h-12' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
+          onChange={(e) => setNewKeyName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreate()} className='h-12 text-base bg-gray-50' />
+        <Button onClick={handleCreate} disabled={creatingKey} size='sm' className='border-0 h-12 px-4' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
           <Plus className='h-4 w-4 mr-1' /> {creatingKey ? '创建中...' : '创建'}
         </Button>
       </div>
 
-      {/* 列表 */}
       {loadingKeys ? (
-        <div className='text-xs text-gray-500 py-3 text-center'>加载中...</div>
+        <div className='text-xs text-gray-500 py-6 text-center'>加载中...</div>
       ) : apiKeys.length === 0 ? (
-        <div className='text-xs text-gray-500 py-3 text-center'>还没有 API Key</div>
+        <div className='text-xs text-gray-500 py-6 text-center'>还没有 API Key</div>
       ) : (
-        <div className='space-y-1.5'>
+        <div className='space-y-2'>
           {apiKeys.map((k) => (
-            <div key={k.id} className='px-2 py-1.5 border rounded text-sm bg-white'>
+            <div key={k.id} className='px-3 py-3 border border-gray-100 rounded-lg bg-gray-50'>
               <div className='flex items-center gap-2'>
-                <Key className='h-3.5 w-3.5 text-gray-400 shrink-0' />
+                <Key className='h-4 w-4 text-gray-400 shrink-0' />
                 <div className='flex-1 min-w-0'>
-                  <div className='flex items-center gap-1.5'>
+                  <div className='flex items-center gap-1.5 flex-wrap'>
                     <span className='font-medium text-gray-900 truncate'>{k.name}</span>
                     {!k.is_active && <Badge variant='destructive' className='text-[10px] py-0'>已撤销</Badge>}
                     {k.is_active && k.last_used_at && (
@@ -398,28 +428,27 @@ function ApiKeyPanel() {
                       <Badge variant='outline' className='text-[10px] py-0 text-gray-500 border-gray-300'>旧格式</Badge>
                     )}
                   </div>
-                  <div className='text-[10px] text-gray-500 font-mono truncate'>{k.key_prefix}...</div>
+                  <div className='text-[11px] text-gray-500 font-mono truncate mt-0.5'>{k.key_prefix}...</div>
                 </div>
                 {k.is_active && (
-                  <>
+                  <div className='flex items-center gap-1 flex-shrink-0'>
                     <Button size='sm' variant='ghost' onClick={() => handleReveal(k)} disabled={!!revealingId || k.is_legacy}
-                      title={k.is_legacy ? '旧格式不可反查，请撤销重建' : (revealedKey?.id === k.id ? '隐藏明文' : '查看明文')}
-                      className='h-6 w-6 p-0 text-gray-500 hover:bg-gray-50'>
-                      {revealingId === k.id ? <Loader2 className='h-3 w-3 animate-spin' /> : (revealedKey?.id === k.id ? <EyeOff className='h-3 w-3' /> : <Eye className='h-3 w-3' />)}
+                      className='h-8 w-8 p-0 text-gray-500 hover:bg-gray-100'>
+                      {revealingId === k.id ? <Loader2 className='h-4 w-4 animate-spin' /> : (revealedKey?.id === k.id ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />)}
                     </Button>
-                    <Button size='sm' variant='ghost' onClick={() => handleRevoke(k.id, k.name)} className='h-6 w-6 p-0 text-red-500 hover:bg-red-50'>
-                      <Trash2 className='h-3 w-3' />
+                    <Button size='sm' variant='ghost' onClick={() => handleRevoke(k.id, k.name)} className='h-8 w-8 p-0 text-red-500 hover:bg-red-50'>
+                      <Trash2 className='h-4 w-4' />
                     </Button>
-                  </>
+                  </div>
                 )}
               </div>
               {revealedKey?.id === k.id && (
-                <div className='flex items-center gap-1 mt-1.5'>
-                  <code className='flex-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-mono break-all'>
+                <div className='flex items-center gap-2 mt-2.5'>
+                  <code className='flex-1 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-xs font-mono break-all'>
                     {revealedKey.api_key}
                   </code>
-                  <Button size='sm' variant='ghost' onClick={() => copyKey(revealedKey.api_key)} className='h-6 w-6 p-0'>
-                    <Copy className='h-3 w-3' />
+                  <Button size='sm' variant='ghost' onClick={() => copyKey(revealedKey.api_key)} className='h-8 w-8 p-0 flex-shrink-0'>
+                    <Copy className='h-4 w-4' />
                   </Button>
                 </div>
               )}
@@ -428,7 +457,7 @@ function ApiKeyPanel() {
         </div>
       )}
 
-      <div className='text-[11px] text-gray-500 leading-relaxed p-2 bg-blue-50 border border-blue-200 rounded'>
+      <div className='text-[11px] text-gray-500 leading-relaxed p-3 bg-blue-50 border border-blue-200 rounded-lg'>
         <strong className='text-blue-900'>用法：</strong>创建后保存到工具配置文件（如 <code className='bg-white px-1 rounded'>~/.buddy-skill/config.json</code>），请求时在 Header 携带 <code className='bg-white px-1 rounded'>X-API-Key: 你的Key</code>。
       </div>
     </div>
