@@ -30,16 +30,21 @@ export function SettingsCenter({ onBack, defaultSection = 'profile' }) {
   const { user, login, logout } = useAuth();
 
   return (
-    <div className='flex flex-col h-full bg-[#f5f5f5] min-h-0'>
+    <div className='flex flex-col h-full bg-white min-h-0'>
       {/* 移动端顶部返回栏 */}
       <header
-        className='md:hidden flex-shrink-0 bg-white flex items-center px-3 gap-2 border-b border-gray-100'
+        className='md:hidden flex-shrink-0 bg-white flex items-center px-4 gap-3 border-b border-gray-100'
         style={{ height: 'calc(44px + env(safe-area-inset-top, 0px))', paddingTop: 'calc(env(safe-area-inset-top, 0px))' }}
       >
-        <Button variant='ghost' size='sm' onClick={onBack} className='p-1 h-8 w-8'>
+        <Button variant='ghost' size='sm' onClick={onBack} className='p-2 h-9 w-9 -ml-1'>
           <ArrowLeft className='h-5 w-5' />
         </Button>
         <span className='font-semibold text-gray-800'>设置</span>
+        <div className='ml-auto flex items-center'>
+          <Button variant='ghost' size='sm' onClick={() => logout()} className='text-red-500 hover:bg-red-50'>
+            <LogOut className='h-4 w-4' />
+          </Button>
+        </div>
       </header>
 
       <div className='flex flex-1 min-h-0 overflow-hidden'>
@@ -74,32 +79,43 @@ export function SettingsCenter({ onBack, defaultSection = 'profile' }) {
         </aside>
 
         {/* 移动端横向分类 */}
-        <div className='md:hidden flex-shrink-0 bg-white border-b border-gray-100 overflow-x-auto px-2 py-2 flex gap-1'>
-          {SECTIONS.map(({ id, label, icon: Icon }) => {
-            const active = section === id;
-            return (
-              <button
-                key={id}
-                onClick={() => setSection(id)}
-                className={`flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                  active ? 'text-[#2d4a00] font-medium' : 'text-gray-500 bg-gray-100'
-                }`}
-                style={active ? { backgroundColor: '#bbea3b' } : {}}
-              >
-                <Icon className='h-3 w-3' /> {label}
-              </button>
-            );
-          })}
+        <div className='md:hidden flex-shrink-0 bg-white border-b border-gray-100'>
+          <div className='overflow-x-auto whitespace-nowrap py-2 px-3 scrollbar-hide' style={{ WebkitOverflowScrolling: 'touch' }}>
+            {SECTIONS.map(({ id, label, icon: Icon }) => {
+              const active = section === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setSection(id)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors mr-2 last:mr-0 ${
+                    active ? 'text-[#2d4a00] bg-[#bbea3b]' : 'text-gray-500 bg-gray-100'
+                  }`}
+                >
+                  <Icon className='h-3.5 w-3.5' /> {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* 内容区 */}
-        <main className='flex-1 overflow-y-auto min-h-0'>
+        <main className='flex-1 overflow-y-auto min-h-0 bg-gray-50'>
           <div className='max-w-2xl mx-auto px-4 py-5 md:py-6'>
-            {/* 移动端登出入口 */}
-            <div className='md:hidden mb-3 flex justify-end'>
-              <Button variant='outline' size='sm' onClick={() => logout()} className='text-red-500 border-red-200 hover:bg-red-50'>
-                <LogOut className='h-3.5 w-3.5 mr-1' /> 退出登录
-              </Button>
+            {/* 移动端用户卡片 */}
+            <div className='md:hidden mb-4 bg-white rounded-xl p-4 border border-gray-100'>
+              <div className='flex items-center gap-3'>
+                <div className='w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xl font-semibold overflow-hidden flex-shrink-0'>
+                  {user?.avatar_url ? (
+                    <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
+                  ) : (
+                    (user?.nickname || user?.username || 'U')[0].toUpperCase()
+                  )}
+                </div>
+                <div className='flex-1 min-w-0'>
+                  <div className='font-semibold text-gray-800 truncate'>{user?.nickname || user?.username || '用户'}</div>
+                  <div className='text-xs text-gray-500'>{user?.username}</div>
+                </div>
+              </div>
             </div>
 
             {section === 'profile' && <ProfilePanel user={user} login={login} />}
@@ -165,13 +181,13 @@ function ProfilePanel({ user, login }) {
   };
 
   return (
-    <div className='space-y-5'>
+    <div className='space-y-6 bg-white rounded-xl p-4 border border-gray-100'>
       <h2 className='text-lg font-semibold text-gray-800 hidden md:block'>个人资料</h2>
 
       {/* 头像上传 */}
       <div className='flex flex-col items-center gap-3'>
         <div className='relative group'>
-          <div className='w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-3xl font-semibold overflow-hidden'>
+          <div className='w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-3xl font-semibold overflow-hidden shadow-sm'>
             {avatarUrl ? (
               <img src={avatarUrl} alt='avatar' className='w-full h-full object-cover' />
             ) : (
@@ -190,17 +206,17 @@ function ProfilePanel({ user, login }) {
       {/* 昵称 */}
       <div className='space-y-2'>
         <Label htmlFor='nickname'>昵称</Label>
-        <Input id='nickname' value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder='输入你的昵称' />
+        <Input id='nickname' value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder='输入你的昵称' className='h-12 text-base' />
       </div>
 
       {/* 用户名只读 */}
       <div className='space-y-2'>
         <Label htmlFor='username'>用户名</Label>
-        <Input id='username' value={user?.username || ''} disabled className='bg-gray-50 text-gray-500' />
+        <Input id='username' value={user?.username || ''} disabled className='h-12 bg-gray-50 text-gray-500' />
         <p className='text-xs text-gray-400'>用户名注册后不可修改</p>
       </div>
 
-      <Button onClick={handleSave} disabled={saving} className='w-full md:w-auto border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
+      <Button onClick={handleSave} disabled={saving} className='w-full h-12 text-base border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
         {saving ? <Loader2 className='h-4 w-4 mr-2 animate-spin' /> : <Save className='w-4 h-4 mr-2' />}
         {saving ? '保存中...' : '保存修改'}
       </Button>
@@ -237,21 +253,21 @@ function PasswordPanel() {
   };
 
   return (
-    <div className='space-y-4'>
+    <div className='space-y-4 bg-white rounded-xl p-4 border border-gray-100'>
       <h2 className='text-lg font-semibold text-gray-800 hidden md:block'>修改密码</h2>
       <div className='space-y-2'>
         <Label htmlFor='old-password'>原密码</Label>
-        <Input id='old-password' type='password' value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder='请输入原密码' />
+        <Input id='old-password' type='password' value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder='请输入原密码' className='h-12 text-base' />
       </div>
       <div className='space-y-2'>
         <Label htmlFor='new-password'>新密码</Label>
-        <Input id='new-password' type='password' value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder='请输入新密码（至少6位）' />
+        <Input id='new-password' type='password' value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder='请输入新密码（至少6位）' className='h-12 text-base' />
       </div>
       <div className='space-y-2'>
         <Label htmlFor='confirm-password'>确认新密码</Label>
-        <Input id='confirm-password' type='password' value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder='请再次输入新密码' />
+        <Input id='confirm-password' type='password' value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder='请再次输入新密码' className='h-12 text-base' />
       </div>
-      <Button onClick={handleSubmit} disabled={saving} className='w-full md:w-auto border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
+      <Button onClick={handleSubmit} disabled={saving} className='w-full h-12 text-base border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
         {saving ? <Loader2 className='h-4 w-4 mr-2 animate-spin' /> : <Lock className='w-4 h-4 mr-2' />}
         {saving ? '修改中...' : '修改密码'}
       </Button>
@@ -326,7 +342,7 @@ function ApiKeyPanel() {
   const copyKey = (t) => navigator.clipboard.writeText(t).then(() => toast.success('已复制'), () => toast.error('复制失败'));
 
   return (
-    <div className='space-y-4'>
+    <div className='space-y-4 bg-white rounded-xl p-4 border border-gray-100'>
       <h2 className='text-lg font-semibold text-gray-800 hidden md:block'>API Key 管理</h2>
 
       {/* 新创建一次性显示 */}
@@ -352,8 +368,8 @@ function ApiKeyPanel() {
       {/* 创建 */}
       <div className='flex gap-2'>
         <Input placeholder='Key 名称（如：Claude SKILL）' value={newKeyName}
-          onChange={(e) => setNewKeyName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-        <Button onClick={handleCreate} disabled={creatingKey} size='sm' className='border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
+          onChange={(e) => setNewKeyName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreate()} className='h-12 text-base' />
+        <Button onClick={handleCreate} disabled={creatingKey} size='sm' className='border-0 h-12' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
           <Plus className='h-4 w-4 mr-1' /> {creatingKey ? '创建中...' : '创建'}
         </Button>
       </div>
