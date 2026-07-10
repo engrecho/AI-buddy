@@ -281,41 +281,46 @@ const ReadingPage = () => {
     e.preventDefault();
     setDownloading(true);
     try {
-      let insertData = { id: genId(), ...form };
+      let insertData = { ...form };
+      // url 优先用解析后的 url，其次用输入的 shareInput
+      if (!insertData.url && shareInput) insertData.url = shareInput;
 
-      // 先保存基本信息（非离线）到数据库
-      const { error: insertErr } = await supabase.from("reading_items").insert([insertData]);
+      const { data: inserted, error: insertErr } = await supabase.from("reading_items").insert([insertData]).select().single();
       if (insertErr) throw insertErr;
 
-      fetchItems();
+      if (form.is_offline && insertData.url) {
+        toast.info("正在后台离线保存…（可正常关闭页面）");
+        // 离线下载由后端自动处理，这里直接把本地状态标记为离线中
+        if (inserted?.id) {
+          setItems((prev) => [{ ...inserted, is_offline: true }, ...prev]);
+        }
+        // 轮询刷新 offline_path（后端后台下载完会更新）
+        const checkInterval = setInterval(async () => {
+          try {
+            const { data } = await supabase.from("reading_items")
+              .select("id,is_offline,offline_path")
+              .eq("id", inserted?.id || insertData.id)
+              .maybeSingle();
+            if (data?.offline_path) {
+              clearInterval(checkInterval);
+              setItems((prev) => prev.map((it) => it.id === data.id ? { ...it, is_offline: true, offline_path: data.offline_path } : it));
+              toast.success("离线保存完成！");
+            } else if (data && data.is_offline === false && !data.offline_path) {
+              // 下载失败，后端回滚了
+              clearInterval(checkInterval);
+              setItems((prev) => prev.map((it) => it.id === data.id ? { ...it, is_offline: false, offline_path: null } : it));
+              toast.error("离线保存失败，请稍后重试");
+            }
+          } catch (_) {}
+        }, 3000);
+        // 最多轮询 5 分钟
+        setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
+      } else {
+        fetchItems();
+      }
+
       setIsAddOpen(false);
       resetForm();
-
-      // 如果勾选"将链接离线保存"，异步开始离线处理
-      if (form.is_offline && (form.url || shareInput)) {
-        toast.info("正在后台离线保存…（可正常关闭页面）");
-        try {
-          const res = await fetch('/api/extract/download', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ input: form.url || shareInput }),
-          });
-          const json = await res.json();
-          if (json.data?.code === 200) {
-            await supabase.from("reading_items").update({
-              is_offline: true,
-              offline_path: json.data.offline_path || null,
-            }).eq("id", insertData.id);
-            fetchItems();
-            toast.success("离线保存完成！");
-          } else {
-            toast.error(`离线保存失败：${json.data?.message || '未知错误'}`);
-          }
-        } catch (e) {
-          toast.error(`离线保存失败：${e.message}`);
-        }
-      }
     } catch (e) {
       setExtractError(`保存失败：${e.message}`);
     } finally {
@@ -489,25 +494,34 @@ const ReadingPage = () => {
     if (!offlineFilesItem) return;
     setRedownloading(true);
     try {
-      const res = await fetch("/api/extract/redownload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ input: offlineFilesItem.url }),
-      });
-      const json = await res.json();
-      if (json.error) throw new Error(json.error.message);
-      if (json.data?.code === 200) {
-        // 刷新数据库 offline_path
-        await supabase
-          .from("reading_items")
-          .update({ is_offline: true, offline_path: json.data.offline_path })
-          .eq("id", offlineFilesItem.id);
-        await openOfflineFiles({ ...offlineFilesItem, offline_path: json.data.offline_path });
-        fetchItems();
-      } else {
-        throw new Error(json.data?.message || "重新下载失败");
-      }
+      // 通过更新 is_offline=true 触发后端重新下载（后端会先置 false 再后台下载）
+      const { error } = await supabase
+        .from("reading_items")
+        .update({ is_offline: true })
+        .eq("id", offlineFilesItem.id);
+      if (error) throw error;
+      toast.info("正在后台重新离线…（可正常关闭弹窗）");
+      // 轮询刷新
+      const checkInterval = setInterval(async () => {
+        try {
+          const { data } = await supabase.from("reading_items")
+            .select("id,is_offline,offline_path")
+            .eq("id", offlineFilesItem.id)
+            .maybeSingle();
+          if (data?.offline_path) {
+            clearInterval(checkInterval);
+            setItems((prev) => prev.map((it) => it.id === data.id ? { ...it, is_offline: true, offline_path: data.offline_path } : it));
+            setOfflineFilesItem((prev) => prev ? { ...prev, is_offline: true, offline_path: data.offline_path } : prev);
+            await openOfflineFiles({ ...offlineFilesItem, offline_path: data.offline_path });
+            fetchItems();
+            toast.success("重新离线完成！");
+          } else if (data && data.is_offline === false && !data.offline_path) {
+            clearInterval(checkInterval);
+            toast.error("重新离线失败，请稍后重试");
+          }
+        } catch (_) {}
+      }, 3000);
+      setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
     } catch (e) {
       alert(`重新下载失败：${e.message}`);
     } finally {
@@ -1075,18 +1089,29 @@ const ReadingPage = () => {
                         onClick={async () => {
                           setSavingEdit(true);
                           try {
-                            const res = await fetch("/api/extract/redownload", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              credentials: "include",
-                              body: JSON.stringify({ input: editingItem.url }),
-                            });
-                            const json = await res.json();
-                            if (json.error) throw new Error(json.error.message);
-                            if (json.data?.code === 200) {
-                              setEditForm(prev => ({ ...prev, is_offline: true, offline_path: json.data.offline_path }));
-                              setItems(prev => prev.map(it => it.id === editingItem.id ? { ...it, is_offline: true, offline_path: json.data.offline_path } : it));
-                            }
+                            // 通过更新 is_offline=true 触发后端重新下载
+                            const { error } = await supabase
+                              .from("reading_items")
+                              .update({ is_offline: true })
+                              .eq("id", editingItem.id);
+                            if (error) throw error;
+                            setEditForm(prev => ({ ...prev, is_offline: true, offline_path: "" }));
+                            setItems(prev => prev.map(it => it.id === editingItem.id ? { ...it, is_offline: true, offline_path: null } : it));
+                            toast.info("正在后台重新离线…");
+                            // 轮询刷新
+                            const id = editingItem.id;
+                            const iv = setInterval(async () => {
+                              const { data } = await supabase.from("reading_items")
+                                .select("id,is_offline,offline_path")
+                                .eq("id", id).maybeSingle();
+                              if (data?.offline_path) {
+                                clearInterval(iv);
+                                setEditForm(prev => ({ ...prev, is_offline: true, offline_path: data.offline_path }));
+                                setItems(prev => prev.map(it => it.id === id ? { ...it, is_offline: true, offline_path: data.offline_path } : it));
+                                toast.success("重新离线完成！");
+                              }
+                            }, 3000);
+                            setTimeout(() => clearInterval(iv), 5 * 60 * 1000);
                           } catch (e) { alert(`重新下载失败：${e.message}`); }
                           setSavingEdit(false);
                         }}
@@ -1103,20 +1128,33 @@ const ReadingPage = () => {
                     onClick={async () => {
                       setSavingEdit(true);
                       try {
-                        const res = await fetch('/api/extract/download', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          credentials: 'include',
-                          body: JSON.stringify({ input: editingItem.url }),
-                        });
-                        const json = await res.json();
-                        if (json.error) throw new Error(json.error.message);
-                        if (json.data?.code === 200) {
-                          setEditForm(prev => ({ ...prev, is_offline: true, offline_path: json.data.offline_path }));
-                          setItems(prev => prev.map(it => it.id === editingItem.id ? { ...it, is_offline: true, offline_path: json.data.offline_path } : it));
-                        } else {
-                          throw new Error(json.data?.message || '离线下载失败');
-                        }
+                        // 通过更新 is_offline=true 触发后端离线下载
+                        const { error } = await supabase
+                          .from("reading_items")
+                          .update({ is_offline: true })
+                          .eq("id", editingItem.id);
+                        if (error) throw error;
+                        setEditForm(prev => ({ ...prev, is_offline: true, offline_path: "" }));
+                        setItems(prev => prev.map(it => it.id === editingItem.id ? { ...it, is_offline: true, offline_path: null } : it));
+                        toast.info("正在后台离线保存…");
+                        const id = editingItem.id;
+                        const iv = setInterval(async () => {
+                          const { data } = await supabase.from("reading_items")
+                            .select("id,is_offline,offline_path")
+                            .eq("id", id).maybeSingle();
+                          if (data?.offline_path) {
+                            clearInterval(iv);
+                            setEditForm(prev => ({ ...prev, is_offline: true, offline_path: data.offline_path }));
+                            setItems(prev => prev.map(it => it.id === id ? { ...it, is_offline: true, offline_path: data.offline_path } : it));
+                            toast.success("离线保存完成！");
+                          } else if (data && data.is_offline === false && !data.offline_path) {
+                            clearInterval(iv);
+                            setEditForm(prev => ({ ...prev, is_offline: false, offline_path: "" }));
+                            setItems(prev => prev.map(it => it.id === id ? { ...it, is_offline: false, offline_path: null } : it));
+                            toast.error("离线保存失败，请稍后重试");
+                          }
+                        }, 3000);
+                        setTimeout(() => clearInterval(iv), 5 * 60 * 1000);
                       } catch (e) { alert(`离线保存失败：${e.message}`); }
                       setSavingEdit(false);
                     }}

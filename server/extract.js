@@ -434,3 +434,20 @@ export async function listOfflineFiles(offlinePath) {
 export async function redownload(input) {
   return parseAndDownload(input);
 }
+
+/**
+ * 删除离线目录（rm -rf）
+ * @param {string} offlinePath basename 或绝对路径
+ * @returns {{ok: boolean, message?: string}}
+ */
+export function deleteOfflineFiles(offlinePath) {
+  const dir = resolveOfflinePath(offlinePath);
+  if (!dir) return { ok: false, message: '路径越界' };
+  if (!fs.existsSync(dir)) return { ok: true, message: '目录不存在，跳过' };
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+}

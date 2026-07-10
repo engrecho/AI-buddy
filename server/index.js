@@ -16,7 +16,7 @@ import {
   updateUserProfile, changePassword,
   createApiKeyForUser, listApiKeysForUser, revokeApiKey, revealApiKey, getUserByApiKey
 } from './auth.js';
-import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload } from './extract.js';
+import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -87,35 +87,64 @@ app.post('/api/extract', authMiddleware, async (req, res) => {
   }
 });
 
-// 解析 + 下载到 server 端本地（对应前端"离线到本地"勾选框）
+// ── 已废弃：/api/extract/download 和 /api/extract/redownload ──
+// 离线下载现在由 reading 的创建/更新接口自动处理：
+//   - POST /api/v1/reading 传 is_offline=true → 创建后后台自动下载
+//   - PATCH /api/reading/:id 传 is_offline=true → 开始离线下载
+//   - PATCH /api/reading/:id 传 is_offline=false → 删除离线文件
+//   - 不传 is_offline → 不处理离线状态
 app.post('/api/extract/download', authMiddleware, async (req, res) => {
-  const input = (req.body?.input || req.body?.text || '').toString();
-  if (!input) {
-    return res.json({ data: null, error: { message: '缺少 input 字段' } });
-  }
-  try {
-    const result = await parseAndDownload(input);
-    return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
-  } catch (err) {
-    console.error('extract/download error:', err);
-    return res.json({ data: null, error: { message: err.message } });
-  }
+  return res.json({
+    data: null,
+    error: { message: '此接口已废弃，请直接在创建/更新阅读项时传 is_offline=true，由后端自动处理离线下载' }
+  });
 });
 
-// 重新下载（基于已有的 input 重新走 extract+download 流程）
 app.post('/api/extract/redownload', authMiddleware, async (req, res) => {
-  const input = (req.body?.input || req.body?.text || '').toString();
-  if (!input) {
-    return res.json({ data: null, error: { message: '缺少 input 字段' } });
-  }
-  try {
-    const result = await redownload(input);
-    return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
-  } catch (err) {
-    console.error('extract/redownload error:', err);
-    return res.json({ data: result, error: { message: err.message } });
-  }
+  return res.json({
+    data: null,
+    error: { message: '此接口已废弃，请通过 PATCH /api/reading/:id 传 is_offline=true 重新离线' }
+  });
 });
+
+// ── 后台异步离线下载工具 ──────────────────────────────────
+// 下载可能耗时较长（几十秒），创建/更新接口立即返回，后台异步执行。
+// 下载成功后自动更新 is_offline=true 和 offline_path；失败则回滚。
+function triggerOfflineDownloadAsync(userId, readingId, url) {
+  // fire-and-forget：不阻塞响应
+  (async () => {
+    try {
+      console.log(`[offline] 开始后台下载: reading_id=${readingId}, url=${url?.slice(0, 80)}`);
+      const input = String(url || '');
+      if (!input) {
+        console.error(`[offline] reading_id=${readingId} 无 url，跳过下载`);
+        return;
+      }
+      const result = await parseAndDownload(input);
+      if (result.code === 200 && result.offline_path) {
+        await pool.query(
+          'UPDATE reading_items SET is_offline = 1, offline_path = ? WHERE id = ? AND user_id = ?',
+          [result.offline_path, readingId, userId]
+        );
+        console.log(`[offline] 下载成功: reading_id=${readingId}, offline_path=${result.offline_path}`);
+      } else {
+        console.error(`[offline] 下载失败: reading_id=${readingId}, message=${result.message}`);
+        await pool.query(
+          'UPDATE reading_items SET is_offline = 0, offline_path = NULL WHERE id = ? AND user_id = ?',
+          [readingId, userId]
+        );
+      }
+    } catch (err) {
+      console.error(`[offline] 异常: reading_id=${readingId}, err=`, err);
+      try {
+        await pool.query(
+          'UPDATE reading_items SET is_offline = 0, offline_path = NULL WHERE id = ? AND user_id = ?',
+          [readingId, userId]
+        );
+      } catch (_) {}
+    }
+  })();
+}
 
 // 列出某条 reading 的离线文件
 app.get('/api/reading/:id/files', authMiddleware, async (req, res) => {
@@ -214,37 +243,70 @@ app.patch('/api/reading/:id', authMiddleware, async (req, res) => {
   if (!Number.isFinite(id)) {
     return res.json({ data: null, error: { message: 'id 必须是数字' } });
   }
+  const body = req.body || {};
+  // is_offline 三态：
+  //   - 传 true  → 需要开启离线（触发下载）
+  //   - 传 false → 需要关闭离线（删除离线文件）
+  //   - 不传     → 不处理离线状态
+  const offlineKey = Object.keys(body).includes('is_offline') ? 'is_offline' : (Object.keys(body).includes('isOffline') ? 'isOffline' : null);
+  const wantOfflineTrue = offlineKey && (body[offlineKey] === true || body[offlineKey] === 1 || body[offlineKey] === 'true');
+  const wantOfflineFalse = offlineKey && (body[offlineKey] === false || body[offlineKey] === 0 || body[offlineKey] === 'false');
+
   const ALLOWED_FIELDS = [
     'url', 'title', 'summary', 'cover_url', 'platform',
     'category', 'is_read', 'is_starred', 'is_offline', 'offline_path',
     'tags',
   ];
   const updates = {};
-  for (const [k, v] of Object.entries(req.body || {})) {
-    if (ALLOWED_FIELDS.includes(k)) updates[k] = v;
+  for (const [k, v] of Object.entries(body)) {
+    if (ALLOWED_FIELDS.includes(k)) {
+      // is_offline 特殊处理：true 时先置 false（后台下载完再更新），false 时同步删文件
+      if (k === 'is_offline' || k === 'isOffline') {
+        if (wantOfflineTrue) {
+          updates.is_offline = false;
+          updates.offline_path = null;
+        } else if (wantOfflineFalse) {
+          updates.is_offline = false;
+          updates.offline_path = null;
+        } else {
+          continue; // 不传或非法值，不更新
+        }
+      } else {
+        updates[k] = v;
+      }
+    }
   }
-  if (Object.keys(updates).length === 0) {
-    return res.json({ data: null, error: { message: '没有可更新的字段' } });
+  // 先查出当前记录（需要 url 用于下载，需要 offline_path 用于删除）
+  const [rows] = await pool.query(
+    'SELECT id, url, offline_path, is_offline FROM reading_items WHERE id = ? AND user_id = ?',
+    [id, req.user.id]
+  );
+  const current = rows[0];
+  if (!current) {
+    return res.json({ data: null, error: { message: '记录不存在或无权限' } });
   }
   try {
-    // 准备 SQL：动态拼 SET
-    const cols = Object.keys(updates);
-    const values = cols.map((c) => {
-      // 复用通用 prepareValue
-      if (BOOLEAN_COLUMNS.reading_items.includes(c)) {
-        return v => v ? 1 : 0;
+    if (Object.keys(updates).length > 0) {
+      const setClause = Object.keys(updates).map((c) => `\`${c}\` = ?`).join(', ');
+      const preparedValues = Object.keys(updates).map((c) => prepareValue('reading_items', c, updates[c]));
+      const sql = `UPDATE reading_items SET ${setClause} WHERE id = ? AND user_id = ?`;
+      await pool.query(sql, [...preparedValues, id, req.user.id]);
+    }
+    // 返回成功
+    res.json({ data: { success: true, is_offline: wantOfflineTrue ? true : (wantOfflineFalse ? false : !!current.is_offline) }, error: null });
+    // 后台异步处理离线操作
+    if (wantOfflineTrue) {
+      // 开启离线：触发后台下载
+      triggerOfflineDownloadAsync(req.user.id, id, body.url || current.url);
+    } else if (wantOfflineFalse && current.offline_path) {
+      // 关闭离线：删除本地文件（同步即可，很快）
+      const del = deleteOfflineFiles(current.offline_path);
+      if (!del.ok) {
+        console.error(`[offline] 删除失败: reading_id=${id}, err=${del.message}`);
+      } else {
+        console.log(`[offline] 已删除离线文件: reading_id=${id}, path=${current.offline_path}`);
       }
-      if (JSON_COLUMNS.reading_items.includes(c) && typeof updates[c] === 'object') {
-        return JSON.stringify(updates[c]);
-      }
-      return updates[c];
-    });
-    // 上面闭包写错，改成直接用 prepareValue
-    const setClause = cols.map((c) => `\`${c}\` = ?`).join(', ');
-    const preparedValues = cols.map((c) => prepareValue('reading_items', c, updates[c]));
-    const sql = `UPDATE reading_items SET ${setClause} WHERE id = ? AND user_id = ?`;
-    await pool.query(sql, [...preparedValues, id, req.user.id]);
-    return res.json({ data: { success: true }, error: null });
+    }
   } catch (err) {
     console.error('reading PATCH error:', err);
     return res.json({ data: null, error: { message: err.message } });
@@ -660,6 +722,9 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
       return res.json({ data: null, error: { message: 'No data provided' } });
     }
 
+    // reading_items: 收集需要后台离线下载的行
+    const offlinePending = []; // { id, url }
+
     const validCols = TABLE_COLUMNS[table];
     const columns = [];
     const valueRows = [];
@@ -667,23 +732,35 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     // 自动注入 user_id
     const autoUserId = TABLES_WITH_USER_ID.has(table) ? req.user.id : null;
 
-    const allKeys = new Set();
     for (const row of rows) {
-      for (const key of Object.keys(row)) {
-        if (validCols.includes(key) && key !== 'user_id') allKeys.add(key); // 禁止客户端设置 user_id
+      // reading_items is_offline=true 特殊处理：先存 false，后台下载完再更新
+      const wantOffline = table === 'reading_items' && (row.is_offline === true || row.is_offline === 1 || row.is_offline === 'true');
+      if (table === 'reading_items' && wantOffline) {
+        row.is_offline = false;
+        row.offline_path = null;
       }
-    }
-    if (autoUserId !== null) {
-      allKeys.add('user_id');
-    }
-    columns.push(...allKeys);
 
-    for (const row of rows) {
+      const allKeys = new Set();
+      for (const key of Object.keys(row)) {
+        if (validCols.includes(key) && key !== 'user_id') allKeys.add(key);
+      }
+      if (autoUserId !== null) {
+        allKeys.add('user_id');
+      }
+      if (columns.length === 0) {
+        columns.push(...allKeys);
+      }
+
       const values = columns.map(col => {
         if (col === 'user_id') return autoUserId;
         return prepareValue(table, col, row[col]);
       });
       valueRows.push(values);
+
+      // 记录需要离线的行（用行在数组中的索引，后面拿到 insertId 再补）
+      if (wantOffline) {
+        offlinePending.push({ rowIdx: valueRows.length - 1, url: row.url });
+      }
     }
 
     const placeholders = valueRows.map(() => `(${columns.map(() => '?').join(', ')})`).join(', ');
@@ -695,10 +772,24 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
 
     let data = null;
     if (rows.length === 1) {
-      data = { ...rows[0], user_id: autoUserId };
+      const firstWantOffline = offlinePending.some(p => p.rowIdx === 0);
+      data = { ...rows[0], user_id: autoUserId, is_offline: firstWantOffline ? true : (rows[0].is_offline ?? false) };
       if (result.insertId) data.id = result.insertId;
+      // 触发后台离线下载
+      if (firstWantOffline && result.insertId) {
+        triggerOfflineDownloadAsync(req.user.id, result.insertId, offlinePending.find(p => p.rowIdx === 0)?.url || rows[0].url);
+      }
     } else {
-      data = rows.map(r => ({ ...r, user_id: autoUserId }));
+      data = rows.map((r, i) => {
+        const insertedId = result.insertId ? result.insertId + i : r.id;
+        const wantOffline = offlinePending.some(p => p.rowIdx === i);
+        const item = { ...r, user_id: autoUserId, is_offline: wantOffline ? true : (r.is_offline ?? false) };
+        if (insertedId) item.id = insertedId;
+        if (wantOffline && insertedId) {
+          triggerOfflineDownloadAsync(req.user.id, insertedId, offlinePending.find(p => p.rowIdx === i)?.url || r.url);
+        }
+        return item;
+      });
     }
 
     return res.json({ data, error: null });
@@ -732,7 +823,36 @@ app.patch('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     const setColumns = [];
     const setParams = [];
 
-    for (const [key, value] of Object.entries(patch)) {
+    // reading_items is_offline 三态处理
+    const isReadingTable = table === 'reading_items';
+    let wantOfflineTrue = false;
+    let wantOfflineFalse = false;
+    let affectedRows = [];
+    let overridePatch = { ...patch };
+
+    if (isReadingTable) {
+      const offlineKey = Object.keys(patch).includes('is_offline') ? 'is_offline' : (Object.keys(patch).includes('isOffline') ? 'isOffline' : null);
+      if (offlineKey) {
+        const v = patch[offlineKey];
+        if (v === true || v === 1 || v === 'true') {
+          wantOfflineTrue = true;
+          overridePatch.is_offline = false;
+          overridePatch.offline_path = null;
+        } else if (v === false || v === 0 || v === 'false') {
+          wantOfflineFalse = true;
+          overridePatch.is_offline = false;
+          overridePatch.offline_path = null;
+        }
+      }
+      // 更新前先查出受影响的行（用于后续离线文件删除/下载）
+      if (wantOfflineTrue || wantOfflineFalse) {
+        const selectSql = `SELECT id, url, offline_path, is_offline FROM ${escapeId(table)} ${whereClause}`;
+        const [rows] = await pool.query(selectSql, params);
+        affectedRows = rows;
+      }
+    }
+
+    for (const [key, value] of Object.entries(overridePatch)) {
       // 禁止客户端修改 user_id 和 password_hash
       if (key === 'user_id' || key === 'password_hash') continue;
       if (validCols.includes(key)) {
@@ -743,11 +863,11 @@ app.patch('/api/:table', requireAuthForBusinessTable, async (req, res) => {
 
     // 自动更新 updated_at
     const TABLES_WITH_UPDATED_AT = ['tasks', 'task_groups', 'memos', 'task_notes'];
-    if (TABLES_WITH_UPDATED_AT.includes(table) && !patch.updated_at) {
+    if (TABLES_WITH_UPDATED_AT.includes(table) && !overridePatch.updated_at) {
       setColumns.push('`updated_at` = CURRENT_TIMESTAMP');
     }
 
-    if (setColumns.length === 0) {
+    if (setColumns.length === 0 && !(isReadingTable && (wantOfflineTrue || wantOfflineFalse))) {
       return res.json({ data: null, error: { message: 'No valid columns to update' } });
     }
 
@@ -755,9 +875,27 @@ app.patch('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     const orderClause = orderClauses.length > 0 ? `ORDER BY ${orderClauses.join(', ')}` : '';
     const limitClause = limit ? `LIMIT ${parseInt(limit, 10)}` : '';
 
-    const sql = `UPDATE ${escapeId(table)} SET ${setColumns.join(', ')} ${whereClause} ${orderClause} ${limitClause}`;
-    const allParams = [...setParams, ...params];
-    await pool.query(sql, allParams);
+    if (setColumns.length > 0) {
+      const sql = `UPDATE ${escapeId(table)} SET ${setColumns.join(', ')} ${whereClause} ${orderClause} ${limitClause}`;
+      const allParams = [...setParams, ...params];
+      await pool.query(sql, allParams);
+    }
+
+    // 后台处理离线操作
+    if (isReadingTable && affectedRows.length > 0) {
+      for (const row of affectedRows) {
+        if (wantOfflineTrue) {
+          triggerOfflineDownloadAsync(req.user.id, row.id, overridePatch.url || row.url);
+        } else if (wantOfflineFalse && row.offline_path) {
+          const del = deleteOfflineFiles(row.offline_path);
+          if (!del.ok) {
+            console.error(`[offline] 删除失败: reading_id=${row.id}, err=${del.message}`);
+          } else {
+            console.log(`[offline] 已删除离线文件: reading_id=${row.id}, path=${row.offline_path}`);
+          }
+        }
+      }
+    }
 
     if (returnData === '1') {
       const selectClause = parseSelect(select, table);
@@ -1021,14 +1159,94 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
   app.post(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
     try {
       const row = { ...req.body, user_id: req.user.id };
+      // reading_items: is_offline=true 时先置 false，返回后后台异步下载再更新
+      const wantOffline = table === 'reading_items' && (row.is_offline === true || row.is_offline === 1 || row.is_offline === 'true');
+      if (table === 'reading_items' && wantOffline) {
+        row.is_offline = false;
+        row.offline_path = null;
+      }
       const { sql, params } = buildInsertSql(table, [row]);
       const [result] = await pool.query(sql, params);
-      res.status(201).json({ data: { ...row, id: result.insertId || row.id }, error: null });
+      const insertId = result.insertId || row.id;
+      res.status(201).json({ data: { ...row, id: insertId, is_offline: wantOffline }, error: null });
+      // reading_items: 后台异步触发离线下载
+      if (table === 'reading_items' && wantOffline) {
+        triggerOfflineDownloadAsync(req.user.id, insertId, row.url);
+      }
     } catch (err) {
       res.json({ data: null, error: { message: err.message } });
     }
   });
 }
+
+// v1 PATCH /reading/:id - 更新阅读项（供 Skill/API Key 调用，支持 is_offline 三态）
+app.patch('/api/v1/reading/:id', apiKeyAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 必须是数字' } });
+  }
+  const body = req.body || {};
+  const ALLOWED_FIELDS = [
+    'url', 'title', 'summary', 'cover_url', 'platform',
+    'category', 'is_read', 'is_starred', 'is_offline', 'tags',
+  ];
+  // is_offline 三态：传 true→下载、传 false→删文件、不传→不处理
+  const hasOfflineKey = Object.keys(body).includes('is_offline') || Object.keys(body).includes('isOffline');
+  const offlineKey = Object.keys(body).includes('is_offline') ? 'is_offline' : 'isOffline';
+  const wantOfflineTrue = hasOfflineKey && (body[offlineKey] === true || body[offlineKey] === 1 || body[offlineKey] === 'true');
+  const wantOfflineFalse = hasOfflineKey && (body[offlineKey] === false || body[offlineKey] === 0 || body[offlineKey] === 'false');
+
+  // 查当前行
+  const [rows] = await pool.query(
+    'SELECT id, url, offline_path, is_offline FROM reading_items WHERE id = ? AND user_id = ?',
+    [id, req.user.id]
+  );
+  const current = rows[0];
+  if (!current) {
+    return res.json({ data: null, error: { message: '记录不存在或无权限' } });
+  }
+
+  const patch = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (k === 'isOffline') {
+      // isOffline 别名 → is_offline
+      if (wantOfflineTrue) { patch.is_offline = false; patch.offline_path = null; }
+      else if (wantOfflineFalse) { patch.is_offline = false; patch.offline_path = null; }
+      continue;
+    }
+    if (k === 'is_offline') {
+      if (wantOfflineTrue) { patch.is_offline = false; patch.offline_path = null; }
+      else if (wantOfflineFalse) { patch.is_offline = false; patch.offline_path = null; }
+      continue;
+    }
+    if (ALLOWED_FIELDS.includes(k)) patch[k] = v;
+  }
+
+  try {
+    if (Object.keys(patch).length > 0) {
+      const { sql, params } = buildUpdateSql('reading_items', req.user.id, id, patch);
+      if (sql) await pool.query(sql, params);
+    }
+    res.json({
+      data: { success: true, id, is_offline: wantOfflineTrue ? true : (wantOfflineFalse ? false : !!current.is_offline) },
+      error: null,
+    });
+    // 后台异步处理离线
+    if (wantOfflineTrue) {
+      triggerOfflineDownloadAsync(req.user.id, id, body.url || current.url);
+    } else if (wantOfflineFalse && current.offline_path) {
+      const del = deleteOfflineFiles(current.offline_path);
+      if (!del.ok) {
+        console.error(`[offline] 删除失败: reading_id=${id}, err=${del.message}`);
+      } else {
+        console.log(`[offline] 已删除离线文件: reading_id=${id}, path=${current.offline_path}`);
+      }
+    }
+  } catch (err) {
+    console.error('v1 reading PATCH error:', err);
+    res.json({ data: null, error: { message: err.message } });
+  }
+});
 
 // 获取任务分组
 app.get('/api/v1/task-groups', apiKeyAuth, async (req, res) => {

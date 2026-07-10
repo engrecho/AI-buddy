@@ -46,7 +46,8 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js list-memos                列出备忘
   node index.js add-memo --content "..."  创建备忘
   node index.js list-reading              列出阅读收藏
-  node index.js add-reading --url "..."   添加阅读收藏
+  node index.js add-reading --url "..."   添加阅读收藏（--is-offline true 自动离线下载）
+  node index.js update-reading <id>       更新阅读项（--is-offline true/false 开关离线）
   node index.js where-is-key              显示配置文件位置
   node index.js doctor                     环境诊断（检查 Node/配置/内置解析脚本/API）
   node index.js --version                  显示版本号
@@ -64,10 +65,14 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
 
 社媒内容（抖音/B站/小红书/公众号等 1000+ 平台）— 本 SKILL 已内置解析,无需安装其他依赖：
   node index.js extract-video "<分享文本或URL>"        仅解析,返回原始信息(标题/封面/直链)
-  node index.js download-video "<分享文本或URL>"        解析 + 下载到服务端(由 AI-Buddy 服务端处理)
+
+  保存社媒内容到阅读列表(推荐流程):
+    1. 先用 extract-video 解析拿到 title/platform/cover_url 等元信息
+    2. 再用 add-reading --url <url> --title ... --cover-url ... [--is-offline true] 保存
+    3. 传 --is-offline true 时,服务端会自动在后台离线下载,无需本地下载,也不会重复下载
 
 解析脚本内置在 buddy-skill/scripts/video_extract.cjs,零依赖,仅用 Node 内置模块。
-下载由 AI-Buddy 服务端统一处理,保存到服务端默认目录,无需用户配置路径。
+离线下载由 AI-Buddy 服务端统一处理（通过 is_offline 参数触发）,保存到服务端默认目录。
 `);
 }
 
@@ -417,16 +422,19 @@ async function cmdAddReading(flags) {
   if (flags.platform) data.platform = flags.platform;
   if (flags.cover) data.cover_url = flags.cover;
   if (flags['cover-url']) data.cover_url = flags['cover-url'] || flags.cover;
-  if (flags['offline-path']) data.offline_path = flags['offline-path'];
   if (flags.offline != null || flags['is-offline'] != null) {
     const v = flags.offline != null ? flags.offline : flags['is-offline'];
     data.is_offline = v === 'true' || v === true;
   }
+  // 注意：不要传 offline_path，由服务端在离线下载完成后自动填写
+  // 注意：is_offline=true 时，服务端会在后台自动触发离线下载，无需本地下载，避免重复
 
   const created = await client.createReading(data);
   const sum = created.summary ? (created.summary.length > 50 ? created.summary.slice(0, 50) + '…' : created.summary) : '';
   const tags = Array.isArray(created.tags) && created.tags.length ? created.tags.join(' / ') : '';
-  const loc = created.is_offline ? 'AI-Buddy → 阅读收藏（已离线，文件存服务端）' : 'AI-Buddy → 阅读收藏（网页/App 可查看）';
+  const loc = created.is_offline
+    ? 'AI-Buddy → 阅读收藏（已标记离线，服务端正在后台下载，完成后网页/App 可离线查看）'
+    : 'AI-Buddy → 阅读收藏（网页/App 可查看）';
   console.log('✓ 已保存到【阅读】列表');
   console.log(`  ID:    ${created.id}`);
   console.log(`  标题:  ${created.title || created.url}`);
@@ -435,6 +443,9 @@ async function cmdAddReading(flags) {
   if (tags) console.log(`  标签:  ${tags}`);
   if (created.platform) console.log(`  平台:  ${created.platform}`);
   console.log(`  位置:  ${loc}`);
+  if (data.is_offline) {
+    console.log('  提示：离线下载在服务端后台进行，稍后可在网页/App 查看离线文件。');
+  }
 }
 
 async function cmdWhereIsKey() {
@@ -480,32 +491,60 @@ async function cmdExtractVideo(flags) {
   }
 }
 
-// ── 下载/离线(走 AI-Buddy 服务端,保存到服务端默认目录) ──
+// ── 下载/离线（已废弃）──
+// 旧的 download-video 命令已废弃，新流程：add-reading 传 --is-offline true
 async function cmdDownloadVideo(flags) {
   const input = flags._positional?.[0] || flags.input;
   if (!input) {
-    console.error('✗ 用法: node index.js download-video "<分享文本或URL>"');
+    console.error('✗ download-video 命令已废弃。新流程：');
+    console.error('  1. node index.js extract-video "<分享文本或URL>"   # 本地解析');
+    console.error('  2. node index.js add-reading --url <url> --title "..." --cover-url "..." --is-offline true');
+    console.error('  传 --is-offline true 时，服务端会自动在后台离线下载，无需本地下载。');
     process.exit(1);
   }
-  const cfg = loadConfig();
-  if (!cfg) throw new Error('未找到配置，请先运行: node index.js init');
-  const client = new BuddyClient(cfg);
-  try {
-    const result = await client.request('POST', '/extract/download', { body: { input } });
-    if (result && result.code === 200) {
-      console.log('✓ 下载完成（文件已存到 AI-Buddy 服务端，与 Agent 所在机器无关）');
-      console.log(`  平台: ${result.host}`);
-      console.log(`  标题: ${result.title}`);
-      console.log(`  离线目录: ${result.offline_path}`);
-      console.log('  提示：文件在服务端统一目录，用户从 Buddy 网页/App 的阅读列表查看，请勿在本地另存。');
-    } else {
-      console.error('✗ 下载失败:', result?.message || JSON.stringify(result));
-      process.exit(1);
-    }
-  } catch (err) {
-    console.error('✗ 下载失败:', err.message);
+  console.error('⚠ download-video 命令已废弃，改为通过 add-reading --is-offline true 触发离线下载。');
+  console.error('  即：先用 extract-video 本地解析，再 add-reading 时传 --is-offline true，后端自动处理。');
+  process.exit(1);
+}
+
+// ── 更新阅读项（可修改 is_offline 开启/关闭离线，或其他字段） ──
+async function cmdUpdateReading(flags) {
+  const id = parseInt(flags._positional?.[0] || flags.id, 10);
+  if (!id) {
+    console.error('✗ 缺少阅读项 ID');
+    console.error('用法: node index.js update-reading <id> [--title ...] [--is-offline true|false]');
+    console.error('  --is-offline true  → 开启离线（服务端后台下载）');
+    console.error('  --is-offline false → 关闭离线（删除服务端离线文件）');
+    console.error('  不传 --is-offline  → 不修改离线状态');
     process.exit(1);
   }
+  const client = requireClient();
+  const changes = {};
+  if (flags.title) changes.title = flags.title;
+  if (flags.summary) changes.summary = flags.summary;
+  if (flags.category) changes.category = flags.category;
+  if (flags.tags) changes.tags = flags.tags.split(',').map(s => s.trim()).filter(Boolean);
+  if (flags.platform) changes.platform = flags.platform;
+  if (flags.cover) changes.cover_url = flags.cover;
+  if (flags['cover-url']) changes.cover_url = flags['cover-url'] || flags.cover;
+  const hasOffline = flags.offline != null || flags['is-offline'] != null;
+  if (hasOffline) {
+    const v = flags.offline != null ? flags.offline : flags['is-offline'];
+    changes.is_offline = v === 'true' || v === true;
+  }
+  if (Object.keys(changes).length === 0) {
+    console.error('✗ 没有指定要更新的字段');
+    process.exit(1);
+  }
+  const result = await client.updateReading(id, changes);
+  console.log('✓ 已更新阅读项');
+  console.log(`  ID: ${id}`);
+  if (changes.is_offline === true) {
+    console.log('  离线: 已开启，服务端正在后台离线下载，完成后可在网页/App 查看');
+  } else if (changes.is_offline === false) {
+    console.log('  离线: 已关闭，离线文件已删除');
+  }
+  if (result) console.log(`  返回: ${JSON.stringify(result)}`);
 }
 
 async function cmdDoctor() {
@@ -582,6 +621,7 @@ async function main() {
       case 'add-memo': return cmdAddMemo(flags);
       case 'list-reading': return cmdListReading(flags);
       case 'add-reading': return cmdAddReading(flags);
+      case 'update-reading': return cmdUpdateReading(flags);
       case 'extract-video': return cmdExtractVideo(flags);
       case 'download-video': return cmdDownloadVideo(flags);
       case 'where-is-key': return cmdWhereIsKey();

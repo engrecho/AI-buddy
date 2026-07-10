@@ -118,6 +118,10 @@ class BuddyClient {
     return this.request('POST', '/reading', { body: data });
   }
 
+  updateReading(id, changes) {
+    return this.request('PATCH', `/reading/${id}`, { body: changes });
+  }
+
   // ── 随记 ──
   listQuickNotes(filters = {}) {
     return this.request('GET', '/quick-notes', { query: filters });
