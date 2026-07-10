@@ -16,7 +16,7 @@ import {
   updateUserProfile, changePassword,
   createApiKeyForUser, listApiKeysForUser, revokeApiKey, revealApiKey, getUserByApiKey
 } from './auth.js';
-import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles } from './extract.js';
+import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles, extractUrl } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -733,6 +733,32 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     const autoUserId = TABLES_WITH_USER_ID.has(table) ? req.user.id : null;
 
     for (const row of rows) {
+      // reading_items 特殊处理
+      if (table === 'reading_items') {
+        // 1) url 兼容分享文本：自动提取真实 URL
+        if (row.url) {
+          const extracted = extractUrl(row.url);
+          if (extracted && extracted !== row.url) {
+            row.url = extracted;
+          }
+        }
+        // 2) auto_parse: 自动解析补全字段（用户传的优先）
+        const wantAutoParse = row.auto_parse === true || row.autoParse === true || row.auto_parse === 'true';
+        if (wantAutoParse && row.url) {
+          try {
+            const parsed = await parseShare(row.url);
+            if (parsed.code === 200) {
+              if (!row.title && parsed.title) row.title = parsed.title;
+              if (!row.cover_url && parsed.cover_url) row.cover_url = parsed.cover_url;
+              if (!row.platform && parsed.platform) row.platform = parsed.platform;
+              if (!row.summary && parsed.summary) row.summary = parsed.summary;
+            }
+          } catch (parseErr) {
+            console.error('[auto_parse] 解析失败:', parseErr.message);
+          }
+        }
+      }
+
       // reading_items is_offline=true 特殊处理：先存 false，后台下载完再更新
       const wantOffline = table === 'reading_items' && (row.is_offline === true || row.is_offline === 1 || row.is_offline === 'true');
       if (table === 'reading_items' && wantOffline) {
@@ -1158,7 +1184,38 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
 
   app.post(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
     try {
-      const row = { ...req.body, user_id: req.user.id };
+      const body = req.body || {};
+      let row = { ...body, user_id: req.user.id };
+
+      // ── reading_items 特殊处理 ──────────────────────────────────
+      if (table === 'reading_items') {
+        // 1) url 兼容分享文本：自动提取真实 URL
+        if (row.url) {
+          const extracted = extractUrl(row.url);
+          if (extracted && extracted !== row.url) {
+            row.url = extracted;
+          }
+        }
+
+        // 2) auto_parse: 服务端自动解析补全 title/cover_url/platform/summary
+        //    用户已传的字段优先级最高，不会被覆盖
+        const wantAutoParse = body.auto_parse === true || body.autoParse === true || body.auto_parse === 'true';
+        if (wantAutoParse && row.url) {
+          try {
+            const parsed = await parseShare(row.url);
+            if (parsed.code === 200) {
+              if (!row.title && parsed.title) row.title = parsed.title;
+              if (!row.cover_url && parsed.cover_url) row.cover_url = parsed.cover_url;
+              if (!row.platform && parsed.platform) row.platform = parsed.platform;
+              if (!row.summary && parsed.summary) row.summary = parsed.summary;
+            }
+          } catch (parseErr) {
+            // 解析失败不影响保存，只打日志
+            console.error('[auto_parse] 解析失败:', parseErr.message);
+          }
+        }
+      }
+
       // reading_items: is_offline=true 时先置 false，返回后后台异步下载再更新
       const wantOffline = table === 'reading_items' && (row.is_offline === true || row.is_offline === 1 || row.is_offline === 'true');
       if (table === 'reading_items' && wantOffline) {
