@@ -3778,14 +3778,15 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
     fetchAll();
   }, []);
   const fetchAll = async () => {
-    // 使用批量接口一次请求拉取所有数据，避免多请求串行延迟
+    // 使用批量接口一次请求拉取所有数据（含最新评论），避免多请求串行延迟
     const results = await batchQuery([
       { table: 'tasks', order: ['updated_at:desc', 'due_date:desc'], limit: 500 },
       { table: 'task_members', order: ['created_at:asc'] },
       { table: 'task_tags', order: ['created_at:asc'] },
       { table: 'task_groups', order: ['sort_order:asc', 'created_at:asc'] },
+      { table: 'task_comments', select: '*', order: ['created_at:desc'], limit: 500 },
     ]);
-    const [taskRes = {}, memberRes = {}, tagRes = {}, groupRes = {}] = results;
+    const [taskRes = {}, memberRes = {}, tagRes = {}, groupRes = {}, commentRes = {}] = results;
     // group_id 已存数据库，直接使用数据库值；仅 importance/urgency/owner_ids/supporter_ids 仍用 localStorage
     const allTasks = applyStoredTaskExtra(taskRes.data || []);
     setTasks(allTasks);
@@ -3821,16 +3822,14 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
       }
       setGroups(localGroups);
     }
-    // 评论查询不阻塞主流程（fire-and-forget）
-    if (allTasks.length > 0) {
-      const taskIds = allTasks.map((t) => t.id);
-      supabase.from('task_comments').select('*').in('task_id', taskIds).order('created_at', { ascending: false }).then(({ data: commentData }) => {
-        if (commentData) {
-          const map = {};
-          commentData.forEach((c) => { if (!map[c.task_id]) map[c.task_id] = c; });
-          setLatestComments(map);
-        }
+    // 处理最新评论（从批量结果中提取，按 task_id 去重取最新）
+    if (commentRes.data) {
+      const allTaskIds = new Set(allTasks.map((t) => t.id));
+      const map = {};
+      commentRes.data.forEach((c) => {
+        if (allTaskIds.has(c.task_id) && !map[c.task_id]) map[c.task_id] = c;
       });
+      setLatestComments(map);
     }
   };
   const fetchMembers = async () => {

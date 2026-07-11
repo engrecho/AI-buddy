@@ -25,10 +25,22 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ── CORS 配置 ───────────────────────────────────────────────
+// 生产环境明确允许同源 + 常见本地开发地址
+const CORS_ORIGIN = process.env.NODE_ENV === 'production'
+  ? ['https://buddy.bajiaolu.cn', 'http://localhost:5173', 'http://127.0.0.1:5173']
+  : true;
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : true, // 生产环境不开放 CORS（同源）
+  origin: CORS_ORIGIN,
   credentials: true, // 允许发送 Cookie
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  maxAge: 86400, // 预检缓存 24 小时，减少 OPTIONS 请求
 }));
+// 显式处理 OPTIONS 预检，记录延迟
+app.options('*', (req, res) => {
+  res.sendStatus(204);
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
@@ -788,6 +800,7 @@ function requireAuthForBusinessTable(req, res, next) {
 // ══════════════════════════════════════════════════════════════
 
 app.post('/api/batch', authMiddleware, async (req, res) => {
+  const t0 = Date.now();
   const queries = req.body?.queries || [];
   if (!Array.isArray(queries) || queries.length === 0) {
     return res.json({ data: null, error: { message: 'queries 必须是非空数组' } });
@@ -797,7 +810,8 @@ app.post('/api/batch', authMiddleware, async (req, res) => {
   }
   try {
     const results = await Promise.all(
-      queries.map(async (q) => {
+      queries.map(async (q, idx) => {
+        const t1 = Date.now();
         const { table, select, filter, order, limit } = q;
         if (!ALLOWED_TABLES.has(table)) {
           return { error: `Table "${table}" not found` };
@@ -813,13 +827,20 @@ app.post('/api/batch', authMiddleware, async (req, res) => {
           const orderClause = orderClauses.length > 0 ? `ORDER BY ${orderClauses.join(', ')}` : '';
           const limitClause = limit ? `LIMIT ${parseInt(limit, 10)}` : '';
           const sql = `SELECT ${selectClause} FROM ${escapeId(table)} ${whereClause} ${orderClause} ${limitClause}`;
+          const t2 = Date.now();
           const [rows] = await pool.query(sql, params);
-          return { data: rows.map(row => transformRow(table, row)) };
+          const t3 = Date.now();
+          const mapped = rows.map(row => transformRow(table, row));
+          const t4 = Date.now();
+          console.log(`[batch][${idx}] ${table}: build=${t2 - t1}ms, query=${t3 - t2}ms, map=${t4 - t3}ms, rows=${rows.length}`);
+          return { data: mapped };
         } catch (err) {
           return { error: err.message };
         }
       })
     );
+    const total = Date.now() - t0;
+    console.log(`[batch] total=${total}ms queries=${queries.length}`);
     return res.json({ data: results, error: null });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });

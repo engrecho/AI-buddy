@@ -53,6 +53,7 @@ function getCookieOptions() {
 // ── 认证中间件 ───────────────────────────────────────────────
 // 从 Cookie 或 Authorization Header 提取 JWT，验证后挂载到 req.user
 export function authMiddleware(req, res, next) {
+  const t0 = Date.now();
   let token = null;
 
   // 1. 从 Cookie 读取
@@ -94,6 +95,8 @@ export function authMiddleware(req, res, next) {
     username: decoded.username,
     nickname: decoded.nickname,
   };
+  const t1 = Date.now();
+  if (t1 - t0 > 10) console.log(`[auth] slow: ${t1 - t0}ms user=${decoded.id} path=${req.path}`);
   next();
 }
 
