@@ -21,7 +21,7 @@ function PageLoader() {
   );
 }
 
-// ── 路由守卫：未登录重定向到 /login ─────────────────────────
+// ── 路由守卫：未登录跳转到落地页 ───────────────────────────
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -31,7 +31,10 @@ function ProtectedRoute({ children }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    window.location.replace("/landing.html");
+    return null;
+  }
   return children;
 }
 
