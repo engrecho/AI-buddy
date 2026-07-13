@@ -1,11 +1,18 @@
 #!/bin/bash
 # ============================================================
-# AI-Buddy - 宝塔 WebHook 自动部署脚本
-# 
+# AI-Buddy - 宝塔 WebHook 自动部署脚本（完整部署）
+#
+# 触发方式：GitHub push → 宝塔 WebHook → 本脚本
+# 完成动作：git pull → yarn install → yarn build → PM2 重启 → SQL 迁移 → skills 同步
+#
 # 使用方式:
 #   1. 在宝塔 WebHook 插件中创建 hook
 #   2. 执行脚本内容填写: bash /www/wwwroot/buddy.bajiaolu.cn/deploy/pull.sh
 #   3. GitHub Webhook 指向宝塔生成的 URL
+#
+# 单点运维操作（重启 / 迁移 / 备份 / 查日志等）请用 ops.sh：
+#   bash /www/wwwroot/buddy.bajiaolu.cn/deploy/ops.sh <action>
+# 详见 ops.sh 顶部注释或运行 bash ops.sh help
 # ============================================================
 
 set -e
