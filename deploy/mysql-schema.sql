@@ -1,0 +1,327 @@
+-- ============================================================
+-- AI-Buddy - 完整数据库 Schema
+--
+-- 用途: 全新初始化数据库（包含所有表、索引、约束）
+-- 注意: 仅用于首次安装；增量变更请使用 ALTER 语句手动执行
+--
+-- 使用方法:
+--   mysql -u <user> -p <database> < mysql-schema.sql
+-- ============================================================
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8 */;
+
+--
+-- Table structure for table `users`
+--
+
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `username` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `nickname` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `avatar_url` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_login_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `uk_users_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `api_keys`
+--
+
+DROP TABLE IF EXISTS `api_keys`;
+CREATE TABLE `api_keys` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `key_hash` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `key_prefix` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT 'Default',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `last_used_at` timestamp NULL DEFAULT NULL,
+  `expires_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `key_cipher` text COLLATE utf8mb4_unicode_ci COMMENT 'AES加密的明文key，可反查',
+  `is_legacy` tinyint(1) NOT NULL DEFAULT '0' COMMENT '1=旧格式单向哈希不可反查',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `key_hash` (`key_hash`),
+  KEY `idx_api_keys_user_id` (`user_id`),
+  KEY `idx_api_keys_key_hash` (`key_hash`),
+  KEY `idx_user_active` (`user_id`,`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `memos`
+--
+
+DROP TABLE IF EXISTS `memos`;
+CREATE TABLE `memos` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL DEFAULT '0',
+  `title` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `content` longtext COLLATE utf8mb4_unicode_ci,
+  `memo_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'note',
+  `direction` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `related_url` text COLLATE utf8mb4_unicode_ci,
+  `related_task_id` bigint(20) DEFAULT NULL,
+  `related_task_ids` json DEFAULT NULL,
+  `reading_item_id` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `tag_ids` json DEFAULT NULL,
+  `tags` text COLLATE utf8mb4_unicode_ci,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_memos_deleted_at` (`deleted_at`),
+  KEY `idx_memos_created_at` (`created_at`),
+  KEY `idx_memos_updated_at` (`updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `quick_notes`
+--
+
+DROP TABLE IF EXISTS `quick_notes`;
+CREATE TABLE `quick_notes` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `content` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `tags` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_quick_notes_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `reading_items`
+--
+
+DROP TABLE IF EXISTS `reading_items`;
+CREATE TABLE `reading_items` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `url` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `platform` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '社媒平台标识：douyin/bilibili/xiaohongshu/wechat/youtube/tiktok/kuaishou/weibo/other/web',
+  `title` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `summary` longtext COLLATE utf8mb4_unicode_ci,
+  `cover_url` text COLLATE utf8mb4_unicode_ci COMMENT '封面图 URL',
+  `category` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT 'work',
+  `is_read` tinyint(1) DEFAULT '0',
+  `is_starred` tinyint(1) DEFAULT '0',
+  `is_offline` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否已下载到本地',
+  `offline_path` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '离线内容在 server 上的存储路径',
+  `tags` json DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_reading_items_deleted_at` (`deleted_at`),
+  KEY `idx_reading_items_created_at` (`created_at`),
+  KEY `idx_reading_items_platform` (`platform`),
+  KEY `idx_reading_items_is_offline` (`is_offline`),
+  KEY `idx_user_deleted_created` (`user_id`,`deleted_at`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `rss_sources`
+--
+
+DROP TABLE IF EXISTS `rss_sources`;
+CREATE TABLE `rss_sources` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `url` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text COLLATE utf8mb4_unicode_ci,
+  `site_url` text COLLATE utf8mb4_unicode_ci,
+  `color` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT '#6b7280',
+  `last_fetched_at` timestamp NULL DEFAULT NULL,
+  `last_status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
+  `last_error` text COLLATE utf8mb4_unicode_ci,
+  `article_count` int(11) NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_rss_sources_user` (`user_id`),
+  KEY `idx_rss_sources_user_created` (`user_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `rss_articles`
+--
+
+DROP TABLE IF EXISTS `rss_articles`;
+CREATE TABLE `rss_articles` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `source_id` bigint(20) NOT NULL,
+  `guid` varchar(760) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `url` text COLLATE utf8mb4_unicode_ci,
+  `title` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `summary` longtext COLLATE utf8mb4_unicode_ci,
+  `content` longtext COLLATE utf8mb4_unicode_ci,
+  `cover_url` text COLLATE utf8mb4_unicode_ci,
+  `author` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `categories` json DEFAULT NULL,
+  `published_at` timestamp NULL DEFAULT NULL,
+  `is_read` tinyint(1) NOT NULL DEFAULT '0',
+  `is_starred` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_rss_articles_source_guid` (`source_id`,`guid`),
+  KEY `idx_rss_articles_user` (`user_id`),
+  KEY `idx_rss_articles_source` (`source_id`),
+  KEY `idx_rss_articles_published` (`user_id`,`published_at`),
+  KEY `idx_rss_articles_created` (`user_id`,`created_at`),
+  KEY `idx_rss_articles_read` (`user_id`,`is_read`),
+  CONSTRAINT `fk_rss_articles_source` FOREIGN KEY (`source_id`) REFERENCES `rss_sources` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `task_comments`
+--
+
+DROP TABLE IF EXISTS `task_comments`;
+CREATE TABLE `task_comments` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL DEFAULT '0',
+  `task_id` bigint(20) NOT NULL,
+  `content` longtext COLLATE utf8mb4_unicode_ci,
+  `comment_type` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'comment',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_task_comments_task_id` (`task_id`),
+  KEY `idx_task_comments_created_at` (`created_at`),
+  KEY `idx_task_comments_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `task_groups`
+--
+
+DROP TABLE IF EXISTS `task_groups`;
+CREATE TABLE `task_groups` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `color` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `sort_order` int(11) DEFAULT NULL,
+  `keywords` json DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `user_id` bigint(20) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `idx_task_groups_sort_order` (`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `task_members`
+--
+
+DROP TABLE IF EXISTS `task_members`;
+CREATE TABLE `task_members` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `mis` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_task_members_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `task_notes`
+--
+
+DROP TABLE IF EXISTS `task_notes`;
+CREATE TABLE `task_notes` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL DEFAULT '0',
+  `title` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `content` longtext COLLATE utf8mb4_unicode_ci,
+  `related_task_ids` json DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_task_notes_updated_at` (`updated_at`),
+  KEY `idx_task_notes_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `task_tags`
+--
+
+DROP TABLE IF EXISTS `task_tags`;
+CREATE TABLE `task_tags` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL DEFAULT '0',
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `color` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_task_tags_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `tasks`
+--
+
+DROP TABLE IF EXISTS `tasks`;
+CREATE TABLE `tasks` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `title` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` longtext COLLATE utf8mb4_unicode_ci,
+  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'todo',
+  `priority` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'medium',
+  `parent_id` bigint(20) DEFAULT NULL,
+  `is_project` tinyint(1) DEFAULT '0',
+  `progress` int(11) DEFAULT '0',
+  `due_date` timestamp NULL DEFAULT NULL,
+  `plan_date` timestamp NULL DEFAULT NULL,
+  `owner_id` bigint(20) DEFAULT NULL,
+  `supporter_id` bigint(20) DEFAULT NULL,
+  `related_member_ids` json DEFAULT NULL,
+  `owner_ids` json DEFAULT NULL,
+  `supporter_ids` json DEFAULT NULL,
+  `group_id` bigint(20) DEFAULT NULL,
+  `tag_ids` json DEFAULT NULL,
+  `key_docs` json DEFAULT NULL,
+  `related_dx` json DEFAULT NULL,
+  `predecessor_ids` json DEFAULT NULL,
+  `successor_ids` json DEFAULT NULL,
+  `related_memo_ids` json DEFAULT NULL,
+  `need_report` tinyint(1) DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_tasks_status` (`status`),
+  KEY `idx_tasks_group_id` (`group_id`),
+  KEY `idx_tasks_parent_id` (`parent_id`),
+  KEY `idx_tasks_owner_id` (`owner_id`),
+  KEY `idx_tasks_updated_at` (`updated_at`),
+  KEY `idx_tasks_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `user_settings`
+--
+
+DROP TABLE IF EXISTS `user_settings`;
+CREATE TABLE `user_settings` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `settings` json NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_id` (`user_id`),
+  KEY `idx_user_settings_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

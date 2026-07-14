@@ -10,7 +10,7 @@
 #     2.1 安装依赖（前端 + 后端）
 #     2.2 构建前端
 #     2.3 重启 PM2 后端
-#     2.4 SQL 迁移（增量，已执行的跳过）
+#     2.4 数据库初始化（仅全新部署执行）
 #     2.5 一次性运维任务（deploy/once/*.sh，已执行的跳过）
 #     2.6 同步 Skills + 打包 buddy-skill
 #
@@ -176,32 +176,32 @@ else
   log "  � PM2 重启失败"
 fi
 
-# ── 2.4 SQL 迁移（增量）──────────────────────────────────────
+# ── 2.4 数据库初始化（仅首次执行）────────────────────────────
 log ""
-log "[2.4] SQL 迁移..."
-MIGRATE_DIR="$PROJECT_DIR/deploy"
-APPLIED_FILE="$MIGRATE_DIR/.applied_migrations"
-touch "$APPLIED_FILE"
-MIGRATE_COUNT=0
+log "[2.4] 数据库初始化检查..."
+SCHEMA_FILE="$PROJECT_DIR/deploy/mysql-schema.sql"
+DB_MARKER="$PROJECT_DIR/deploy/.db_initialized"
 
-shopt -s nullglob
-for sql_file in "$MIGRATE_DIR"/migrate-*.sql; do
-  fname=$(basename "$sql_file")
-  if ! grep -qx "$fname" "$APPLIED_FILE" 2>/dev/null; then
-    log "  → 应用迁移: $fname"
-    if mysql -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < "$sql_file" 2>>"$LOG_FILE"; then
-      echo "$fname" >> "$APPLIED_FILE"
-      log "    ✓ $fname 成功"
-      MIGRATE_COUNT=$((MIGRATE_COUNT + 1))
-    else
-      log "    � $fname 失败（查看 $LOG_FILE）"
-    fi
+if [ -f "$DB_MARKER" ]; then
+  log "  · 数据库已初始化，跳过"
+elif [ ! -f "$SCHEMA_FILE" ]; then
+  log "  · mysql-schema.sql 不存在，跳过"
+else
+  # 检查数据库是否已有表（users 表作为标记）
+  TABLE_COUNT=$(mysql -u "$DB_USER" -p"$DB_PASSWORD" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='users';" 2>/dev/null || echo "0")
+  if [ "$TABLE_COUNT" = "1" ]; then
+    log "  · 数据库已有数据表，标记为已初始化"
+    touch "$DB_MARKER"
   else
-    log "  · $fname 已应用，跳过"
+    log "  → 首次初始化数据库..."
+    if mysql -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < "$SCHEMA_FILE" 2>>"$LOG_FILE"; then
+      touch "$DB_MARKER"
+      log "  ✓ 数据库初始化完成"
+    else
+      log "  � 数据库初始化失败（查看 $LOG_FILE）"
+    fi
   fi
-done
-shopt -u nullglob
-log "  本次迁移: $MIGRATE_COUNT 个"
+fi
 
 # ── 2.5 一次性运维任务 ────────────────────────────────────────
 log ""
