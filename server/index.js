@@ -14,7 +14,8 @@ import {
   authMiddleware, optionalAuthMiddleware, generateToken,
   setAuthCookie, clearAuthCookie, registerUser, loginUser, getCurrentUser,
   updateUserProfile, changePassword,
-  createApiKeyForUser, listApiKeysForUser, revokeApiKey, revealApiKey, getUserByApiKey
+  createApiKeyForUser, listApiKeysForUser, revokeApiKey, revealApiKey, getUserByApiKey,
+  superAdminMiddleware, authOrApiKeyMiddleware
 } from './auth.js';
 import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles, extractUrl, downloadFromParsedData } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
@@ -1151,7 +1152,7 @@ function requireAuthForBusinessTable(req, res, next) {
 // 读取 deploy/.last-deploy.json 返回最近一次部署执行情况
 // ════════════════════════════════════════════════════════════
 
-app.get('/api/deploy/status', authMiddleware, async (req, res) => {
+app.get('/api/deploy/status', authOrApiKeyMiddleware, superAdminMiddleware, async (req, res) => {
   const deployDir = path.join(__dirname, '..', 'deploy');
   const statusFile = path.join(deployDir, '.last-deploy.json');
   const onceLogDir = path.join(deployDir, 'once', '.logs');
@@ -1237,7 +1238,7 @@ app.get('/api/deploy/status', authMiddleware, async (req, res) => {
 });
 
 // 获取某个 once 任务的完整日志
-app.get('/api/deploy/once-log/:name', authMiddleware, async (req, res) => {
+app.get('/api/deploy/once-log/:name', authOrApiKeyMiddleware, superAdminMiddleware, async (req, res) => {
   const logFile = path.join(__dirname, '..', 'deploy', 'once', '.logs', `${req.params.name}.log`);
   // 防路径穿越
   if (!logFile.startsWith(path.join(__dirname, '..', 'deploy', 'once', '.logs'))) {
@@ -1255,7 +1256,7 @@ app.get('/api/deploy/once-log/:name', authMiddleware, async (req, res) => {
 });
 
 // 获取历史部署详情
-app.get('/api/deploy/history/:file', authMiddleware, async (req, res) => {
+app.get('/api/deploy/history/:file', authOrApiKeyMiddleware, superAdminMiddleware, async (req, res) => {
   const historyDir = path.join(__dirname, '..', 'deploy', '.deploys');
   const filePath = path.join(historyDir, req.params.file);
   // 防路径穿越：只允许 .json 文件名

@@ -100,6 +100,33 @@ export function authMiddleware(req, res, next) {
   next();
 }
 
+// ── 超级管理员中间件 ────────────────────────────────────────
+// 约定：id=1 的用户为超级管理员（系统首个注册用户）。
+// 用于保护部署、运维等敏感接口，普通用户无权访问。
+const SUPER_ADMIN_USER_ID = Number(process.env.SUPER_ADMIN_USER_ID) || 1;
+
+export function superAdminMiddleware(req, res, next) {
+  // 必须先经过 authMiddleware，确保 req.user 已挂载
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({
+      data: null,
+      error: { message: '未登录' },
+    });
+  }
+  if (req.user.id !== SUPER_ADMIN_USER_ID) {
+    return res.status(403).json({
+      data: null,
+      error: { message: '权限不足，此接口仅限超级管理员访问' },
+    });
+  }
+  next();
+}
+
+// 判断指定用户 id 是否为超级管理员（供业务逻辑调用）
+export function isSuperAdmin(userId) {
+  return Number(userId) === SUPER_ADMIN_USER_ID;
+}
+
 // ── 可选认证中间件（已登录就挂载 req.user，未登录不报错）──
 export function optionalAuthMiddleware(req, res, next) {
   let token = null;
@@ -123,6 +150,52 @@ export function optionalAuthMiddleware(req, res, next) {
     }
   }
   next();
+}
+
+// ── 双鉴权中间件（JWT 或 API Key）──────────────────────────
+// 先尝试 JWT（Cookie / Authorization Header / query token），
+// 失败再尝试 API Key（X-API-Key header）。
+// 用于需要同时支持网页登录态和脚本调用的敏感接口（如部署）。
+// 配合 superAdminMiddleware 使用，可确保只有超级管理员能访问。
+export async function authOrApiKeyMiddleware(req, res, next) {
+  // 1. 先尝试 JWT
+  let token = null;
+  if (req.cookies && req.cookies[COOKIE_NAME]) {
+    token = req.cookies[COOKIE_NAME];
+  } else if (req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.slice(7);
+  } else if (req.query.token) {
+    token = req.query.token;
+  }
+
+  if (token) {
+    const decoded = verifyToken(token);
+    if (decoded) {
+      req.user = {
+        id: decoded.id,
+        username: decoded.username,
+        nickname: decoded.nickname,
+      };
+      return next();
+    }
+  }
+
+  // 2. JWT 失败，尝试 API Key
+  const apiKey = req.headers['x-api-key'];
+  if (apiKey) {
+    const result = await getUserByApiKey(apiKey);
+    if (result) {
+      req.user = result.user;
+      req.apiKeyId = result.api_key_id;
+      return next();
+    }
+  }
+
+  // 3. 都失败
+  return res.status(401).json({
+    data: null,
+    error: { message: '未登录或缺少有效的 API Key' },
+  });
 }
 
 // ── 路由辅助函数 ─────────────────────────────────────────────
