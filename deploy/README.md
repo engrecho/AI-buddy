@@ -34,7 +34,6 @@ GET /api/deploy/status 读取返回（无需 SSH 即可观测）
 | `pull.sh` | 部署主脚本，被宝塔 WebHook 调用 |
 | `record-status.js` | 状态记录器，pull.sh 每步调用它写状态 |
 | `once/*.sh` | 一次性运维任务（见下文） |
-| `migrate-*.sql` | 增量 SQL 迁移脚本 |
 | `mysql-schema.sql` | 完整建表脚本（首次部署用） |
 | `sync-skills.sh` | 同步 buddy-skill 到可分发目录 |
 
@@ -46,7 +45,7 @@ GET /api/deploy/status 读取返回（无需 SSH 即可观测）
 | `.deploys/` | 历史部署归档（保留 20 份） |
 | `once/.done` | 已执行的 once 任务清单 |
 | `once/.logs/*.log` | 每个 once 任务的完整输出 |
-| `.applied_migrations` | 已应用的 SQL 迁移清单 |
+| `.db_initialized` | 数据库已初始化标记 |
 
 ---
 
@@ -67,7 +66,7 @@ GET /api/deploy/status 读取返回（无需 SSH 即可观测）
 | 2.1 | `install_backend` | `yarn install`（后端依赖） |
 | 2.2 | `build_frontend` | `yarn build` |
 | 2.3 | `pm2_restart` | `pm2 delete` + `pm2 start`（彻底重启，避免 cluster 缓存旧代码）+ 健康检查 |
-| 2.4 | `sql_migrate` | 执行未应用的 `migrate-*.sql` |
+| 2.4 | `db_init` | 数据库初始化检查（仅首次部署执行 `mysql-schema.sql`） |
 | 2.5 | `once_tasks` | 执行未完成的 `once/*.sh` |
 | 2.6 | `skills_sync` | 同步 buddy-skill |
 
@@ -99,13 +98,15 @@ push 后等部署完成，通过 `GET /api/deploy/once-log/07-fix-something` 查
 
 ---
 
-## 四、SQL 迁移机制
+## 四、数据库初始化
 
-把增量 SQL 命名为 `deploy/migrate-<描述>.sql`，push 后 pull.sh 自动执行。
+pull.sh 的 2.4 步骤会检查数据库是否已初始化：
 
-- 已应用的记录在 `deploy/.applied_migrations`，下次跳过
-- 执行失败不写入清单，下次部署重试
-- **首次部署**用 `mysql-schema.sql`（完整建表），不要用迁移脚本
+1. 检查 `.db_initialized` 标记文件是否存在 → 存在则跳过
+2. 检查 `users` 表是否存在 → 存在则创建标记文件，跳过
+3. 都不存在 → 执行 `mysql-schema.sql`（完整建表），成功后创建标记文件
+
+所有迁移 SQL 已合并到单一的 `mysql-schema.sql`，不再使用增量迁移脚本。
 
 ---
 
@@ -268,12 +269,11 @@ deploy/
 ├── record-status.js         # 状态记录器（pull.sh 调用）
 ├── sync-skills.sh           # 同步 buddy-skill
 ├── mysql-schema.sql         # 完整建表脚本（首次部署）
-├── migrate-*.sql            # 增量迁移脚本
 ├── once/                    # 一次性运维任务
 │   ├── *.sh                 # 任务脚本
 │   ├── .done                # 已执行清单（gitignore）
 │   └── .logs/               # 任务输出日志（gitignore）
 ├── .last-deploy.json        # 最近部署状态（gitignore，运行时生成）
 ├── .deploys/                # 历史部署归档（gitignore，运行时生成）
-└── .applied_migrations      # 已应用迁移清单（gitignore）
+└── .db_initialized          # 数据库已初始化标记（gitignore，运行时生成）
 ```
