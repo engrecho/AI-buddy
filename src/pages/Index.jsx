@@ -531,9 +531,33 @@ const Index = () => {
       >
         <img src='/logo.png' alt='AI-Buddy' className='h-7 w-7 rounded-md object-cover mr-2' />
         <span className='text-sm font-bold text-gray-800'>AI-Buddy</span>
-        <span className='ml-auto text-xs text-gray-400'>
-          {new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
-        </span>
+        <div className='ml-auto flex items-center gap-2'>
+          <span className='text-xs text-gray-400'>
+            {new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
+          </span>
+          {/* 统计入口 */}
+          <button
+            onClick={() => handleNavClick('dashboard')}
+            title='统计'
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${activeTab === 'dashboard' && !configOpen ? 'text-[#5a7a00] bg-[#bbea3b]/30' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+          >
+            <LayoutDashboard className='h-4 w-4' />
+          </button>
+          {/* 我的入口（头像，进入设置中心） */}
+          <button
+            onClick={() => openSettings()}
+            title='我的'
+            className={`w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden transition-colors ${settingsOpen ? 'text-[#5a7a00] bg-[#bbea3b]/30' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+          >
+            <div className='w-5 h-5 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-[9px] font-semibold overflow-hidden'>
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
+              ) : (
+                (user?.nickname || user?.username || 'U')[0].toUpperCase()
+              )}
+            </div>
+          </button>
+        </div>
       </header>
       )}
 
@@ -612,7 +636,7 @@ const Index = () => {
         className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch z-30'
         style={{ height: 'calc(56px + env(safe-area-inset-bottom, 0px) + 8px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
       >
-        {navItems.map(({ id, label, icon: Icon }) => {
+        {navItems.filter(({ id }) => id !== 'dashboard').map(({ id, label, icon: Icon }) => {
           const active = activeTab === id && !configOpen && !settingsOpen;
           return (
             <button key={id} onClick={() => handleNavClick(id)} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${active ? 'text-gray-900' : 'text-gray-400'}`}>
@@ -631,19 +655,6 @@ const Index = () => {
           {floatNoteOpen && <span className='absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b-full' style={{ backgroundColor: '#bbea3b' }} />}
           <NotebookPen className={`h-5 w-5 ${floatNoteOpen ? 'stroke-[2px]' : 'stroke-[1.5px]'}`} style={floatNoteOpen ? { color: '#5a7a00' } : {}} />
           <span className={`text-[11px] ${floatNoteOpen ? 'font-semibold' : 'font-normal'}`} style={floatNoteOpen ? { color: '#5a7a00' } : {}}>梳理</span>
-        </button>
-
-        {/* 移动端设置入口（头像，进入设置中心） */}
-        <button onClick={() => openSettings()} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${settingsOpen ? 'text-gray-900' : 'text-gray-400'}`}>
-          {settingsOpen && <span className='absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b-full' style={{ backgroundColor: '#bbea3b' }} />}
-          <div className='h-5 w-5 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-[9px] font-semibold overflow-hidden'>
-            {user?.avatar_url ? (
-              <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
-            ) : (
-              (user?.nickname || user?.username || 'U')[0].toUpperCase()
-            )}
-          </div>
-          <span className={`text-[11px] ${settingsOpen ? 'font-semibold' : 'font-normal'}`} style={settingsOpen ? { color: '#5a7a00' } : {}}>我的</span>
         </button>
       </nav>
       )}
