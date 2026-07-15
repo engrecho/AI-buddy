@@ -305,8 +305,9 @@ export async function createDefaultGroupsForUser(userId) {
   ];
 
   for (const g of defaultGroups) {
+    // 幂等：使用 INSERT IGNORE 避免孤儿分组（users 被清空但 task_groups 残留）导致注册失败
     await pool.query(
-      'INSERT INTO task_groups (id, user_id, name, color, sort_order, keywords) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT IGNORE INTO task_groups (id, user_id, name, color, sort_order, keywords) VALUES (?, ?, ?, ?, ?, ?)',
       [g.id, userId, g.name, g.color, g.sort_order, JSON.stringify(g.keywords)]
     );
   }
