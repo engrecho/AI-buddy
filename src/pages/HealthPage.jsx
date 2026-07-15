@@ -94,17 +94,17 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{initial ? '编辑档案' : '新建健康档案'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto py-2">
-          <div className="flex gap-3">
-            <div className="flex-1">
+        <div className="space-y-3 py-2">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">患者姓名 *</label>
               <Input value={form.patient_name} onChange={e => setForm({ ...form, patient_name: e.target.value })} placeholder="如：张三 / 父亲" />
             </div>
-            <div className="w-28">
+            <div className="w-full sm:w-28 flex-shrink-0">
               <label className="text-xs text-gray-500 mb-1 block">性别</label>
               <Select value={form.gender} onValueChange={v => setForm({ ...form, gender: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -116,12 +116,12 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
               </Select>
             </div>
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">出生日期</label>
               <Input type="date" value={form.birth_date} onChange={e => setForm({ ...form, birth_date: e.target.value })} />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">状态</label>
               <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -185,31 +185,31 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-full max-w-2xl mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{initial ? '编辑就诊记录' : '新增就诊记录'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 max-h-[65vh] overflow-y-auto py-2">
-          <div className="flex gap-3">
-            <div className="flex-1">
+        <div className="space-y-3 py-2">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">就诊日期 *</label>
               <Input type="date" value={form.visit_date} onChange={e => setForm({ ...form, visit_date: e.target.value })} />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">下次就诊时间</label>
               <Input type="date" value={form.next_visit_date} onChange={e => setForm({ ...form, next_visit_date: e.target.value })} />
             </div>
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">医院</label>
               <Input value={form.hospital} onChange={e => setForm({ ...form, hospital: e.target.value })} placeholder="如：市第一人民医院" />
             </div>
-            <div className="w-32">
+            <div className="w-full sm:w-32 flex-shrink-0">
               <label className="text-xs text-gray-500 mb-1 block">科室</label>
               <Input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="如：心内科" />
             </div>
-            <div className="w-32">
+            <div className="w-full sm:w-32 flex-shrink-0">
               <label className="text-xs text-gray-500 mb-1 block">医生</label>
               <Input value={form.doctor} onChange={e => setForm({ ...form, doctor: e.target.value })} />
             </div>
@@ -230,7 +230,7 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
             <label className="text-xs text-gray-500 mb-1 block">检查报告</label>
             <Textarea value={form.examination} onChange={e => setForm({ ...form, examination: e.target.value })} rows={3} placeholder="化验结果、检查所见" />
           </div>
-          <div className="w-40">
+          <div className="w-full sm:w-40">
             <label className="text-xs text-gray-500 mb-1 block">费用（元）</label>
             <Input type="number" step="0.01" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} placeholder="0.00" />
           </div>
@@ -269,11 +269,11 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{initial ? '编辑药物' : '新增药物'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto py-2">
+        <div className="space-y-3 py-2">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">药物名称 *</label>
             <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="如：阿司匹林肠溶片" />
@@ -286,12 +286,12 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
             <label className="text-xs text-gray-500 mb-1 block">用药说明</label>
             <Textarea value={form.usage_instruction} onChange={e => setForm({ ...form, usage_instruction: e.target.value })} rows={2} placeholder="注意事项、禁忌等" />
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">开始日期</label>
               <Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">结束日期</label>
               <Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
             </div>
@@ -407,18 +407,18 @@ const HealthPage = () => {
   if (!selectedProfile) {
     return (
       <div className="h-full flex flex-col bg-[#f5f5f5]">
-        <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <Heart className="w-5 h-5 text-rose-500" />
+        <div className="flex items-center justify-between flex-wrap gap-2 px-3 sm:px-4 md:px-6 py-3 bg-white border-b border-gray-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <Heart className="w-5 h-5 text-rose-500 flex-shrink-0" />
             <h1 className="text-base font-semibold">健康档案</h1>
             <Badge variant="secondary" className="ml-2">{profiles.length}</Badge>
           </div>
-          <Button size="sm" className="bg-[#bbea3b] hover:bg-[#a8d435] text-black" onClick={() => setProfileDialog({ open: true, initial: null })}>
+          <Button size="sm" className="bg-[#bbea3b] hover:bg-[#a8d435] text-black flex-shrink-0" onClick={() => setProfileDialog({ open: true, initial: null })}>
             <Plus className="w-4 h-4 mr-1" /> 新建档案
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
           {loading ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>
           ) : profiles.length === 0 ? (
@@ -504,32 +504,32 @@ const HealthPage = () => {
   // ── 档案详情视图 ─────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-[#f5f5f5]">
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => { setSelectedProfile(null); loadProfiles(); }}>
-            <ChevronLeft className="w-4 h-4" /> 返回
-          </Button>
-          <div className="h-4 w-px bg-gray-200 mx-1" />
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold" style={{ backgroundColor: selectedProfile.color || '#ccc' }}>
-            {selectedProfile.patient_name.slice(0, 1)}
+        <div className="flex items-center justify-between flex-wrap gap-2 px-3 sm:px-4 md:px-6 py-3 bg-white border-b border-gray-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <Button variant="ghost" size="sm" onClick={() => { setSelectedProfile(null); loadProfiles(); }} className="flex-shrink-0">
+              <ChevronLeft className="w-4 h-4" /> 返回
+            </Button>
+            <div className="h-4 w-px bg-gray-200 mx-1 flex-shrink-0" />
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: selectedProfile.color || '#ccc' }}>
+              {selectedProfile.patient_name.slice(0, 1)}
+            </div>
+            <div className="min-w-0">
+              <span className="font-semibold text-sm">{selectedProfile.patient_name}</span>
+              <span className="text-gray-400 text-xs ml-2">{selectedProfile.disease_name}</span>
+            </div>
           </div>
-          <div>
-            <span className="font-semibold text-sm">{selectedProfile.patient_name}</span>
-            <span className="text-gray-400 text-xs ml-2">{selectedProfile.disease_name}</span>
+          <div className="flex gap-2 flex-shrink-0">
+            <Button variant="outline" size="sm" onClick={() => setProfileDialog({ open: true, initial: selectedProfile })}>编辑档案</Button>
+            <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'profile', id: selectedProfile.id, name: selectedProfile.patient_name })}>
+              <Trash2 className="w-4 h-4" />
+            </Button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setProfileDialog({ open: true, initial: selectedProfile })}>编辑档案</Button>
-          <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'profile', id: selectedProfile.id, name: selectedProfile.patient_name })}>
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
 
-      {detailLoading ? (
-        <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>
-      ) : (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {detailLoading ? (
+          <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
           {/* 基本信息 */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -563,24 +563,26 @@ const HealthPage = () => {
             ) : (
               <div className="space-y-2">
                 {selectedProfile.medications?.map(med => (
-                  <div key={med.id} className="flex items-start gap-3 p-3 rounded-md border border-gray-100 hover:bg-gray-50">
-                    <div className="w-8 h-8 rounded-md bg-green-50 flex items-center justify-center flex-shrink-0">
-                      {med.photo_url ? <img src={med.photo_url} alt={med.name} className="w-full h-full object-cover rounded-md" /> : <Pill className="w-4 h-4 text-green-500" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{med.name}</span>
-                        {med.status === 'active'
-                          ? <Badge className="text-xs bg-green-100 text-green-700 hover:bg-green-100">服用中</Badge>
-                          : <Badge variant="secondary" className="text-xs">已停药</Badge>}
+                  <div key={med.id} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 p-3 rounded-md border border-gray-100 hover:bg-gray-50">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div className="w-8 h-8 rounded-md bg-green-50 flex items-center justify-center flex-shrink-0">
+                        {med.photo_url ? <img src={med.photo_url} alt={med.name} className="w-full h-full object-cover rounded-md" /> : <Pill className="w-4 h-4 text-green-500" />}
                       </div>
-                      {med.dosage && <div className="text-xs text-gray-500 mt-0.5">{med.dosage}</div>}
-                      {med.usage_instruction && <div className="text-xs text-gray-400 mt-0.5">{med.usage_instruction}</div>}
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        {formatDate(med.start_date)} ~ {med.end_date ? formatDate(med.end_date) : '至今'}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">{med.name}</span>
+                          {med.status === 'active'
+                            ? <Badge className="text-xs bg-green-100 text-green-700 hover:bg-green-100">服用中</Badge>
+                            : <Badge variant="secondary" className="text-xs">已停药</Badge>}
+                        </div>
+                        {med.dosage && <div className="text-xs text-gray-500 mt-0.5">{med.dosage}</div>}
+                        {med.usage_instruction && <div className="text-xs text-gray-400 mt-0.5">{med.usage_instruction}</div>}
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {formatDate(med.start_date)} ~ {med.end_date ? formatDate(med.end_date) : '至今'}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-shrink-0 self-end sm:self-start">
                       <Button variant="ghost" size="sm" onClick={() => setMedDialog({ open: true, initial: med })} className="h-7 px-2 text-xs">编辑</Button>
                       <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ type: 'medication', id: med.id, name: med.name })} className="h-7 px-2 text-xs text-red-500">
                         <Trash2 className="w-3 h-3" />
@@ -611,8 +613,8 @@ const HealthPage = () => {
                 {selectedProfile.visits?.map((v, idx) => (
                   <div key={v.id} className="relative pl-6 pb-4 border-l-2 border-gray-100 last:border-l-0">
                     <div className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-blue-400" />
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{formatDate(v.visit_date)}</span>
                           {v.hospital && <span className="text-xs text-gray-500">{v.hospital}</span>}
@@ -623,12 +625,12 @@ const HealthPage = () => {
                         {v.diagnosis && <div className="text-xs text-gray-600 mt-1">诊断：{v.diagnosis}</div>}
                         {v.prescription && <div className="text-xs text-gray-600 mt-1">处方：{v.prescription}</div>}
                         {v.examination && <div className="text-xs text-gray-500 mt-1">检查：{v.examination}</div>}
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
                           {v.cost != null && <span>费用：¥{Number(v.cost).toFixed(2)}</span>}
                           {v.next_visit_date && <span className="text-amber-600">下次就诊：{formatDate(v.next_visit_date)}</span>}
                         </div>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 flex-shrink-0">
                         <Button variant="ghost" size="sm" onClick={() => setVisitDialog({ open: true, initial: v })} className="h-7 px-2 text-xs">编辑</Button>
                         <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ type: 'visit', id: v.id, name: '就诊记录' })} className="h-7 px-2 text-xs text-red-500">
                           <Trash2 className="w-3 h-3" />

@@ -86,7 +86,7 @@ function UnlockDialog({ open, onClose, onSuccess }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="w-full max-w-sm mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Lock className="w-4 h-4" /> 解锁保险箱
@@ -131,13 +131,13 @@ function ItemFormDialog({ open, onClose, onSubmit, initial }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{initial ? '编辑条目' : '新增条目'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 max-h-[65vh] overflow-y-auto py-2">
-          <div className="flex gap-3">
-            <div className="w-36">
+        <div className="space-y-3 py-2">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="w-full sm:w-36 flex-shrink-0">
               <label className="text-xs text-gray-500 mb-1 block">分类</label>
               <Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -146,7 +146,7 @@ function ItemFormDialog({ open, onClose, onSubmit, initial }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <label className="text-xs text-gray-500 mb-1 block">标题 *</label>
               <Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="如：GitHub 账号" />
             </div>
@@ -353,15 +353,15 @@ const VaultPage = () => {
   return (
     <div className="h-full flex flex-col bg-[#f5f5f5]">
       {/* 顶部工具栏 */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-green-500" />
-          <h1 className="text-base font-semibold">密码保险箱</h1>
-          <div className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-green-50 text-green-600 text-xs">
+      <div className="flex items-center justify-between flex-wrap gap-2 px-3 sm:px-4 md:px-6 py-3 bg-white border-b border-gray-200">
+        <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+          <ShieldCheck className="w-5 h-5 text-green-500 flex-shrink-0" />
+          <h1 className="text-base font-semibold truncate">密码保险箱</h1>
+          <div className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-green-50 text-green-600 text-xs flex-shrink-0">
             <Clock className="w-3 h-3" /> {formatRemaining(remainingSec)}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Button size="sm" variant="outline" onClick={lockNow} className="text-xs">
             <Lock className="w-3 h-3 mr-1" /> 锁定
           </Button>
@@ -372,25 +372,25 @@ const VaultPage = () => {
       </div>
 
       {/* 筛选 */}
-      <div className="flex items-center gap-2 px-6 py-2 bg-white border-b border-gray-100">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex items-center gap-2 flex-wrap px-3 sm:px-4 md:px-6 py-2 bg-white border-b border-gray-100">
+        <div className="relative flex-1 min-w-0 max-w-xs">
           <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="搜索标题/用户名" className="pl-8 h-8 text-sm" />
         </div>
         <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="w-28 h-8 text-sm"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-28 h-8 text-sm flex-shrink-0"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部分类</SelectItem>
             {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button size="sm" variant={showInactive ? 'default' : 'outline'} onClick={() => setShowInactive(!showInactive)} className="h-8 text-xs">
+        <Button size="sm" variant={showInactive ? 'default' : 'outline'} onClick={() => setShowInactive(!showInactive)} className="h-8 text-xs flex-shrink-0">
           {showInactive ? '含废弃' : '仅使用中'}
         </Button>
       </div>
 
       {/* 列表 */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
         {loading ? (
           <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>
         ) : items.length === 0 ? (
@@ -408,35 +408,36 @@ const VaultPage = () => {
               const isCopied = copiedId === item.id;
               return (
                 <div key={item.id} className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-sm transition-all">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-xs">{getCategoryLabel(item.category)}</Badge>
-                        <span className="text-sm font-medium truncate">{item.title}</span>
+                        <Badge variant="outline" className="text-xs flex-shrink-0">{getCategoryLabel(item.category)}</Badge>
+                        <span className="text-sm font-medium truncate min-w-0">{item.title}</span>
                         {item.is_active
-                          ? <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                          : <Badge variant="secondary" className="text-xs text-gray-400">废弃</Badge>}
+                          ? <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
+                          : <Badge variant="secondary" className="text-xs text-gray-400 flex-shrink-0">废弃</Badge>}
                       </div>
-                      {item.username && <div className="text-xs text-gray-500 mt-0.5">{item.username}</div>}
+                      {item.username && <div className="text-xs text-gray-500 mt-0.5 truncate">{item.username}</div>}
                       {item.url && (
-                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline mt-0.5 inline-flex items-center gap-0.5">
-                          {item.url.replace(/^https?:\/\//, '').slice(0, 40)} <ExternalLink className="w-2.5 h-2.5" />
+                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline mt-0.5 inline-flex items-center gap-0.5 min-w-0 max-w-full">
+                          <span className="truncate">{item.url.replace(/^https?:\/\//, '').slice(0, 40)}</span>
+                          <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
                         </a>
                       )}
                       {/* 密码显示区 */}
-                      <div className="flex items-center gap-2 mt-1">
-                        <code className="text-xs bg-gray-50 px-2 py-0.5 rounded font-mono">
+                      <div className="flex items-center gap-2 mt-1 min-w-0">
+                        <code className="text-xs bg-gray-50 px-2 py-0.5 rounded font-mono min-w-0 break-all flex-1">
                           {data ? (showSecret[item.id] ? data.secret : '••••••••') : '••••••••'}
                         </code>
                         <button onClick={() => { revealSecret(item.id); setShowSecret(s => ({ ...s, [item.id]: !s[item.id] })); }}
-                          className="text-gray-400 hover:text-gray-600 transition-colors">
+                          className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
                           {showSecret[item.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                         </button>
-                        <button onClick={() => copySecret(item.id)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                        <button onClick={() => copySecret(item.id)} className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
                           {isCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
-                      {data?.notes && <div className="text-xs text-gray-400 mt-1">{data.notes}</div>}
+                      {data?.notes && <div className="text-xs text-gray-400 mt-1 break-words">{data.notes}</div>}
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                       <Button variant="ghost" size="sm" onClick={() => toggleActive(item)} className="h-7 px-2 text-xs" title={item.is_active ? '标记废弃' : '恢复使用'}>
@@ -467,7 +468,7 @@ const VaultPage = () => {
         initial={itemDialog.initial}
       />
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="w-full max-w-md mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除「{deleteTarget?.title}」？</AlertDialogTitle>
           </AlertDialogHeader>
