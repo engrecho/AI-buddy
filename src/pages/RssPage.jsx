@@ -99,9 +99,6 @@ const RssPage = () => {
   // 刷新全部
   const [refreshingAll, setRefreshingAll] = useState(false);
 
-  // 文章详情
-  const [openArticle, setOpenArticle] = useState(null);
-
   // 删除确认
   const [deleteSourceId, setDeleteSourceId] = useState(null);
   const [deleteArticleId, setDeleteArticleId] = useState(null);
@@ -182,7 +179,7 @@ const RssPage = () => {
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
-      if (isSourceDialogOpen || openArticle || deleteSourceId || deleteArticleId) return;
+      if (isSourceDialogOpen || deleteSourceId || deleteArticleId) return;
       // 静默刷新（不触发 loading）
       const newSources = await fetchSources();
       // 若有源正在 pending 状态，继续轮询；否则降频
@@ -195,7 +192,7 @@ const RssPage = () => {
     }, 30000);
     return () => clearInterval(pollRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, isSourceDialogOpen, openArticle, deleteSourceId, deleteArticleId, activeSourceId, search, sortDir]);
+  }, [view, isSourceDialogOpen, deleteSourceId, deleteArticleId, activeSourceId, search, sortDir]);
 
   // ── 源操作 ──────────────────────────────────────────────────────
   const openAddSource = () => {
@@ -392,8 +389,21 @@ const RssPage = () => {
       setTimeout(() => setCopyToast(''), 2500);
     } catch (e) {
       setCopyToast(`复制失败：${e.message}`);
-      setTimeout(() => setCopyToast(''), 2500);
     }
+  };
+
+  // 点击文章：直接打开原文链接，跳过中间详情弹窗
+  // 如果文章未读，自动标记为已读
+  const openArticleUrl = (article) => {
+    if (!article.url) {
+      toast.error('该文章没有可访问的链接');
+      return;
+    }
+    // 自动标记已读（未读时）
+    if (!article.is_read) {
+      toggleArticleRead(article);
+    }
+    window.open(article.url, '_blank', 'noopener,noreferrer');
   };
 
   // ── 统计 ──
@@ -613,7 +623,7 @@ const RssPage = () => {
               onToggleRead={toggleArticleRead}
               onToggleStar={toggleArticleStar}
               onDelete={(a) => setDeleteArticleId(a.id)}
-              onOpen={(a) => setOpenArticle(a)}
+              onOpen={openArticleUrl}
               onCopy={handleCopyUrl}
             />
           ) : (
@@ -623,7 +633,7 @@ const RssPage = () => {
               onToggleRead={toggleArticleRead}
               onToggleStar={toggleArticleStar}
               onDelete={(a) => setDeleteArticleId(a.id)}
-              onOpen={(a) => setOpenArticle(a)}
+              onOpen={openArticleUrl}
               onCopy={handleCopyUrl}
               onRefreshSource={(srcId) => handleRefreshSource(srcId)}
             />
@@ -757,22 +767,6 @@ const RssPage = () => {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 文章详情 */}
-      <Dialog open={!!openArticle} onOpenChange={(open) => { if (!open) setOpenArticle(null); }}>
-        <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
-          {openArticle && (
-            <ArticleDetail
-              article={openArticle}
-              source={sourceMap[openArticle.source_id]}
-              onToggleRead={() => { toggleArticleRead(openArticle); setOpenArticle(null); }}
-              onToggleStar={() => { toggleArticleStar(openArticle); setOpenArticle(null); }}
-              onCopy={() => handleCopyUrl(openArticle)}
-              onClose={() => setOpenArticle(null)}
-            />
-          )}
         </DialogContent>
       </Dialog>
 
@@ -1166,106 +1160,6 @@ function ArticleRow({ article, source, onToggleRead, onToggleStar, onDelete, onO
         </div>
       </div>
     </div>
-  );
-}
-
-function ArticleDetail({ article, source, onToggleRead, onToggleStar, onCopy, onClose }) {
-  const color = (source && source.color) || '#6b7280';
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 pr-8">
-          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-          <span className="text-xs font-normal text-gray-500">{source?.name || 'RSS'}</span>
-        </DialogTitle>
-      </DialogHeader>
-      <div className="mt-2 space-y-3">
-        {/* 标题 */}
-        <h2 className={`text-lg font-bold leading-snug ${article.is_read ? 'text-gray-500' : 'text-gray-900'}`}>
-          {article.title}
-        </h2>
-
-        {/* 元信息 */}
-        <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
-          {article.author && <span>{article.author}</span>}
-          {article.author && <span>·</span>}
-          <span>{formatDate(article.published_at)}</span>
-          {article.url && (
-            <a
-              href={article.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto flex items-center gap-1 text-indigo-600 hover:text-indigo-800"
-            >
-              <ExternalLink className="h-3 w-3" />
-              打开原文
-            </a>
-          )}
-        </div>
-
-        {/* 分类标签 */}
-        {(article.categories || []).length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {(article.categories || []).map((cat, i) => (
-              <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
-                {typeof cat === 'string' ? cat : (cat?.name || '')}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* 摘要 */}
-        {article.summary && (
-          <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-lg p-3">
-            {article.summary}
-          </div>
-        )}
-
-        {/* 封面 */}
-        {article.cover_url && (
-          <img
-            src={article.cover_url}
-            alt=""
-            className="w-full max-h-72 object-cover rounded-lg"
-            referrerPolicy="no-referrer"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-          />
-        )}
-
-        {/* 底部操作 */}
-        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onToggleRead}
-            className="flex items-center gap-1.5"
-          >
-            <Check className="h-3.5 w-3.5" />
-            {article.is_read ? '标记未读' : '标记已读'}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onToggleStar}
-            className="flex items-center gap-1.5"
-          >
-            <Star className="h-3.5 w-3.5" fill={article.is_starred ? 'currentColor' : 'none'} />
-            {article.is_starred ? '取消星标' : '加星标'}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCopy}
-            className="flex items-center gap-1.5"
-          >
-            <Copy className="h-3.5 w-3.5" />
-            复制链接
-          </Button>
-          <div className="flex-1" />
-          <Button type="button" onClick={onClose}>关闭</Button>
-        </div>
-      </div>
-    </>
   );
 }
 
