@@ -113,6 +113,29 @@ function genderText(g) {
   return g === 'male' ? '男' : g === 'female' ? '女' : '';
 }
 
+// ISO 字符串 → <input type="date"> 需要的 YYYY-MM-DD 格式
+// 后端返回 "2021-11-14T16:00:00.000Z"（UTC），需用本地时区还原正确日期
+function toDateInputValue(v) {
+  if (!v) return '';
+  // 已经是 YYYY-MM-DD 格式，直接返回
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// 把表单中所有日期字段从 ISO 转成 YYYY-MM-DD
+function normalizeFormDates(form, dateFields) {
+  const out = { ...form };
+  for (const k of dateFields) {
+    if (out[k]) out[k] = toDateInputValue(out[k]);
+  }
+  return out;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // 单图上传组件（药物照片）— 移动端响应式缩放
 // ════════════════════════════════════════════════════════════════════
@@ -307,10 +330,14 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
 
   useEffect(() => {
     if (open) {
-      setForm(initial || {
-        patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '',
-        disease_name: '', color: COLOR_OPTIONS[0], status: 'active', notes: '',
-      });
+      if (initial) {
+        setForm(normalizeFormDates(initial, ['birth_date']));
+      } else {
+        setForm({
+          patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '',
+          disease_name: '', color: COLOR_OPTIONS[0], status: 'active', notes: '',
+        });
+      }
     }
   }, [open, initial]);
 
@@ -324,7 +351,7 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base">{initial ? '编辑档案' : '新建健康档案'}</DialogTitle>
         </DialogHeader>
@@ -403,9 +430,10 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
         next_visit_date: '', next_visit_date_end: '', cost: '', attachment_urls: [],
       };
       if (initial) {
+        const normalized = normalizeFormDates(initial, ['visit_date', 'next_visit_date', 'next_visit_date_end']);
         setForm({
           ...base,
-          ...initial,
+          ...normalized,
           attachment_urls: Array.isArray(initial.attachment_urls) ? initial.attachment_urls : [],
         });
       } else {
@@ -427,7 +455,7 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-2xl mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base">{initial ? '编辑就诊记录' : '新增就诊记录'}</DialogTitle>
         </DialogHeader>
@@ -499,10 +527,14 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
 
   useEffect(() => {
     if (open) {
-      setForm(initial || {
-        name: '', photo_url: '', usage_instruction: '', dosage: '',
-        start_date: '', end_date: '', status: 'active', notes: '',
-      });
+      if (initial) {
+        setForm(normalizeFormDates(initial, ['start_date', 'end_date']));
+      } else {
+        setForm({
+          name: '', photo_url: '', usage_instruction: '', dosage: '',
+          start_date: '', end_date: '', status: 'active', notes: '',
+        });
+      }
     }
   }, [open, initial]);
 
@@ -518,7 +550,7 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base">{initial ? '编辑药物' : '新增药物'}</DialogTitle>
         </DialogHeader>

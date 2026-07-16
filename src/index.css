@@ -652,3 +652,36 @@
 input, textarea, select, [contenteditable="true"] {
   font-size: 16px !important;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   date / time 输入框渲染优化
+   iOS Safari: 原生 date input 的文本默认有额外 padding，
+   可能撑大组件并导致 flex 子项溢出。统一紧凑渲染。
+   ═══════════════════════════════════════════════════════════ */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  min-width: 0;
+  /* iOS: 让日期文本左对齐，去掉原生额外内边距 */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* WebKit: date input 内部文本容器 */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value,
+input[type="datetime-local"]::-webkit-date-and-time-value {
+  text-align: left;
+  padding: 0;
+  min-height: auto;
+  /* 防止内容撑开容器 */
+  max-width: 100%;
+}
+
+/* WebKit: date input 的日历图标按钮，缩小并贴合 */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  padding: 0;
+  margin: 0 0 0 4px;
+  cursor: pointer;
+  opacity: 0.6;
+}
