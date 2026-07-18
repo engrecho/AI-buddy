@@ -1395,18 +1395,9 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
             referrerPolicy="no-referrer"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
-              const ph = e.currentTarget.parentElement.querySelector('[data-fallback]');
-              if (ph) ph.style.display = 'flex';
             }}
           />
         ) : null}
-        <div
-          data-fallback
-          className={`absolute inset-0 ${item.cover_url ? 'hidden' : 'flex'} items-center justify-center text-white`}
-          style={{ backgroundColor: pm.color }}
-        >
-          <PlatformIcon className="h-5 w-5" />
-        </div>
       </a>
 
       {/* 中间:标题 + 摘要 + 底部元信息 */}

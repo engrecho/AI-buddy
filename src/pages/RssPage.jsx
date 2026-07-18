@@ -1055,18 +1055,9 @@ function ArticleRow({ article, source, onToggleRead, onToggleStar, onDelete, onO
             referrerPolicy="no-referrer"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
-              const ph = e.currentTarget.parentElement.querySelector('[data-fallback]');
-              if (ph) ph.style.display = 'flex';
             }}
           />
         ) : null}
-        <div
-          data-fallback
-          className={`absolute inset-0 ${article.cover_url ? 'hidden' : 'flex'} items-center justify-center text-white`}
-          style={{ backgroundColor: color }}
-        >
-          <Rss className="h-5 w-5" />
-        </div>
       </button>
 
       {/* 中间：标题 + 摘要 + 元信息 */}

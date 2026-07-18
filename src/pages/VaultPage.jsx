@@ -581,7 +581,7 @@ const VaultPage = () => {
                     )}
 
                     {/* 密码区 - 视觉焦点 */}
-                    <div className="mt-2 flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">
+                    <div className="mt-2 mx-8 flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">
                       <code className="flex-1 text-xs font-mono text-gray-600 min-w-0 truncate">
                         {data ? (showSecret[item.id] ? data.secret : '••••••••••••') : '••••••••••••'}
                       </code>
