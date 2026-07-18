@@ -508,9 +508,9 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
       hospital: normalized.hospital || '',
       department: normalized.department || '',
       doctor: normalized.doctor || '',
-      chief_complaint: '',
+      chief_complaint: normalized.chief_complaint || '',
       diagnosis: '',
-      prescription: normalized.prescription || '',
+      prescription: '',
       examination: '',
       // 下次就诊日期清空（属于上次的计划，不复制）
       next_visit_date: '',
@@ -532,6 +532,9 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
     cleaned.is_reimbursed = form.is_reimbursed ? 1 : 0;
     cleaned.reimburse_amount = form.reimburse_amount ? parseFloat(form.reimburse_amount) : null;
     cleaned.attachment_urls = form.attachment_urls || [];
+    // 主诉/用药/检查已合并到 chief_complaint，清空旧字段
+    cleaned.prescription = null;
+    cleaned.examination = null;
     onSubmit(cleaned);
   };
 
@@ -622,17 +625,11 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
             <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 lg:hidden">
               <AlertCircle className="w-4 h-4 text-amber-500" /> 诊断记录
             </div>
-            <Field label="主诉">
-              <Input value={form.chief_complaint || ''} onChange={e => set('chief_complaint', e.target.value)} placeholder="如：头晕、胸闷一周" />
+            <Field label="主诉 / 用药 / 检查">
+              <Textarea value={form.chief_complaint || ''} onChange={e => set('chief_complaint', e.target.value)} rows={5} placeholder="主诉、用药方案、检查报告等就诊详情" />
             </Field>
             <Field label="诊断结果">
               <Textarea value={form.diagnosis || ''} onChange={e => set('diagnosis', e.target.value)} rows={3} />
-            </Field>
-            <Field label="处方 / 用药方案">
-              <Textarea value={form.prescription || ''} onChange={e => set('prescription', e.target.value)} rows={3} placeholder="医生开的药、剂量、用法" />
-            </Field>
-            <Field label="检查报告">
-              <Textarea value={form.examination || ''} onChange={e => set('examination', e.target.value)} rows={3} placeholder="化验结果、检查所见" />
             </Field>
 
             {/* 下次就诊日期（单日期组件） */}
@@ -1186,11 +1183,15 @@ const HealthPage = () => {
                               v.cost != null && <Badge variant="outline" className="text-xs text-gray-400">未报销</Badge>
                             )}
                           </div>
-                          {/* 就诊详情 */}
-                          {v.chief_complaint && <div className="text-xs text-gray-600 mt-1.5">主诉：{v.chief_complaint}</div>}
+                          {/* 就诊详情（主诉/用药/检查合并；兼容旧数据） */}
+                          {(v.chief_complaint || v.prescription || v.examination) && (
+                            <div className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">
+                              {v.chief_complaint}
+                              {v.prescription && `${v.chief_complaint ? '\n' : ''}用药：${v.prescription}`}
+                              {v.examination && `${(v.chief_complaint || v.prescription) ? '\n' : ''}检查：${v.examination}`}
+                            </div>
+                          )}
                           {v.diagnosis && <div className="text-xs text-gray-600 mt-1">诊断：{v.diagnosis}</div>}
-                          {v.prescription && <div className="text-xs text-gray-600 mt-1">处方：{v.prescription}</div>}
-                          {v.examination && <div className="text-xs text-gray-500 mt-1">检查：{v.examination}</div>}
                           {/* 本次用药 */}
                           {visitMeds.length > 0 && (
                             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
