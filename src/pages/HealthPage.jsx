@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera } from 'lucide-react';
+import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -205,6 +205,8 @@ function SingleImageUpload({ value, onChange, label = '图片' }) {
 // ════════════════════════════════════════════════════════════════════
 function MultiImageUpload({ items = [], onChange }) {
   const [uploading, setUploading] = useState(false);
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [draftNote, setDraftNote] = useState('');
   const fileRef = useRef(null);
 
   const handleFile = async (e) => {
@@ -221,12 +223,25 @@ function MultiImageUpload({ items = [], onChange }) {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const updateNote = (idx, note) => {
-    onChange(items.map((it, i) => i === idx ? { ...it, note } : it));
+  const startEdit = (idx, note) => {
+    setEditingIdx(idx);
+    setDraftNote(note || '');
+  };
+
+  const confirmNote = (idx) => {
+    onChange(items.map((it, i) => i === idx ? { ...it, note: draftNote } : it));
+    setEditingIdx(null);
+    setDraftNote('');
+  };
+
+  const cancelEdit = () => {
+    setEditingIdx(null);
+    setDraftNote('');
   };
 
   const removeItem = (idx) => {
     onChange(items.filter((_, i) => i !== idx));
+    if (editingIdx === idx) cancelEdit();
   };
 
   return (
@@ -249,20 +264,40 @@ function MultiImageUpload({ items = [], onChange }) {
             <div key={idx} className="flex gap-2 items-start p-2 rounded-lg bg-gray-50">
               <img src={item.url} alt={`附件${idx + 1}`} className="w-12 h-12 sm:w-14 sm:h-14 rounded-md object-cover flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <Input
-                  value={item.note || ''}
-                  onChange={e => updateNote(idx, e.target.value)}
-                  placeholder="图片备注（可选）"
-                  className="text-xs h-8"
-                />
+                {editingIdx === idx ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      value={draftNote}
+                      onChange={e => setDraftNote(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') confirmNote(idx); if (e.key === 'Escape') cancelEdit(); }}
+                      placeholder="输入备注"
+                      autoFocus
+                      className="flex-1 min-w-0 text-xs h-7 rounded border border-input bg-white px-2 ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    <button type="button" onClick={() => confirmNote(idx)} className="w-7 h-7 flex items-center justify-center text-green-600 hover:bg-green-50 rounded transition-colors active:scale-90" title="确认">
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button type="button" onClick={cancelEdit} className="w-7 h-7 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded transition-colors active:scale-90" title="取消">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(idx, item.note)}
+                    className="text-xs text-gray-500 hover:text-gray-700 text-left min-w-0 w-full py-1 px-1 rounded hover:bg-white transition-colors"
+                  >
+                    {item.note ? <span className="line-clamp-2 break-words">{item.note}</span> : <span className="text-gray-300">+ 添加备注</span>}
+                  </button>
+                )}
               </div>
               <button
                 type="button"
                 onClick={() => removeItem(idx)}
-                className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-500 hover:bg-red-50 rounded-md flex-shrink-0 transition-colors active:scale-90"
+                className="w-7 h-7 flex items-center justify-center text-red-400 hover:text-red-500 hover:bg-red-50 rounded-md flex-shrink-0 transition-colors active:scale-90"
                 aria-label="删除"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           ))}
@@ -477,9 +512,20 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
       };
       if (initial) {
         const normalized = normalizeFormDates(initial, ['visit_date', 'next_visit_date', 'next_visit_date_end']);
+        // 历史数据合并：diagnosis/prescription/examination 合并到 chief_complaint
+        const mergedComplaint = [
+          normalized.chief_complaint,
+          normalized.prescription ? `用药：${normalized.prescription}` : '',
+          normalized.examination ? `检查：${normalized.examination}` : '',
+          normalized.diagnosis ? `诊断：${normalized.diagnosis}` : '',
+        ].filter(Boolean).join('\n');
         setForm({
           ...base,
           ...normalized,
+          chief_complaint: mergedComplaint,
+          diagnosis: '',
+          prescription: '',
+          examination: '',
           // tinyint → boolean: 后端返回 0/1
           is_reimbursed: initial.is_reimbursed ? 1 : 0,
           reimburse_amount: initial.reimburse_amount != null ? String(initial.reimburse_amount) : '',
@@ -532,9 +578,10 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
     cleaned.is_reimbursed = form.is_reimbursed ? 1 : 0;
     cleaned.reimburse_amount = form.reimburse_amount ? parseFloat(form.reimburse_amount) : null;
     cleaned.attachment_urls = form.attachment_urls || [];
-    // 主诉/用药/检查已合并到 chief_complaint，清空旧字段
+    // 主诉/用药/检查/诊断已合并到 chief_complaint，清空旧字段
     cleaned.prescription = null;
     cleaned.examination = null;
+    cleaned.diagnosis = null;
     onSubmit(cleaned);
   };
 
@@ -625,11 +672,8 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
             <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 lg:hidden">
               <AlertCircle className="w-4 h-4 text-amber-500" /> 诊断记录
             </div>
-            <Field label="主诉 / 用药 / 检查">
-              <Textarea value={form.chief_complaint || ''} onChange={e => set('chief_complaint', e.target.value)} rows={5} placeholder="主诉、用药方案、检查报告等就诊详情" />
-            </Field>
-            <Field label="诊断结果">
-              <Textarea value={form.diagnosis || ''} onChange={e => set('diagnosis', e.target.value)} rows={3} />
+            <Field label="就诊详情（主诉 / 用药 / 检查 / 诊断）">
+              <Textarea value={form.chief_complaint || ''} onChange={e => set('chief_complaint', e.target.value)} rows={6} placeholder="主诉、用药方案、检查报告、诊断结果等就诊详情" />
             </Field>
 
             {/* 下次就诊日期（单日期组件） */}
@@ -1183,15 +1227,15 @@ const HealthPage = () => {
                               v.cost != null && <Badge variant="outline" className="text-xs text-gray-400">未报销</Badge>
                             )}
                           </div>
-                          {/* 就诊详情（主诉/用药/检查合并；兼容旧数据） */}
-                          {(v.chief_complaint || v.prescription || v.examination) && (
+                          {/* 就诊详情（主诉/用药/检查/诊断合并；兼容旧数据） */}
+                          {(v.chief_complaint || v.prescription || v.examination || v.diagnosis) && (
                             <div className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">
                               {v.chief_complaint}
                               {v.prescription && `${v.chief_complaint ? '\n' : ''}用药：${v.prescription}`}
                               {v.examination && `${(v.chief_complaint || v.prescription) ? '\n' : ''}检查：${v.examination}`}
+                              {v.diagnosis && `${(v.chief_complaint || v.prescription || v.examination) ? '\n' : ''}诊断：${v.diagnosis}`}
                             </div>
                           )}
-                          {v.diagnosis && <div className="text-xs text-gray-600 mt-1">诊断：{v.diagnosis}</div>}
                           {/* 本次用药 */}
                           {visitMeds.length > 0 && (
                             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
