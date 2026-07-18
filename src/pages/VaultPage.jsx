@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Lock, Plus, Search, Eye, EyeOff, Copy, Check, Trash2, ShieldCheck, Clock, ExternalLink, Power, CheckSquare, Square, Pencil, Smartphone, Mail, KeyRound, CreditCard, FileLock, ChevronRight } from 'lucide-react';
+import { Lock, Plus, Search, Eye, EyeOff, Copy, Check, Trash2, ShieldCheck, Clock, ExternalLink, CheckSquare, Square, Pencil, Smartphone, Mail, KeyRound, CreditCard, FileLock, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -385,13 +385,6 @@ const VaultPage = () => {
     loadItems();
   };
 
-  const toggleActive = async (item) => {
-    const r = await api(`/api/vault/items/${item.id}`, { method: 'PATCH', body: { is_active: !item.is_active } });
-    if (r.error) { toast.error(r.error.message); return; }
-    toast.success(item.is_active ? '已标记废弃' : '已恢复使用');
-    loadItems();
-  };
-
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const r = await api(`/api/vault/items/${deleteTarget.id}`, { method: 'DELETE' });
@@ -526,30 +519,25 @@ const VaultPage = () => {
                             <CatIcon className="w-3.5 h-3.5" style={{ color: catStyle.bar }} />
                           </div>
                           <h3 className="text-sm font-semibold text-gray-900 truncate">{item.title}</h3>
+                          {item.url && (
+                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600 truncate inline-flex items-center gap-0.5 text-xs flex-shrink-0">
+                              <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
+                              <span className="truncate max-w-[120px]">{item.url.replace(/^https?:\/\//, '').slice(0, 30)}</span>
+                            </a>
+                          )}
                           {item.is_active ? (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100 flex-shrink-0">使用中</span>
                           ) : (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-400 border border-gray-100 flex-shrink-0">已废弃</span>
                           )}
                         </div>
-                        {/* 用户名 + URL */}
-                        {(item.username || item.url) && (
-                          <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 pl-8">
-                            {item.username && <span className="truncate">{item.username}</span>}
-                            {item.url && (
-                              <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600 truncate inline-flex items-center gap-0.5">
-                                <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
-                                <span className="truncate">{item.url.replace(/^https?:\/\//, '').slice(0, 30)}</span>
-                              </a>
-                            )}
-                          </div>
+                        {/* 用户名 */}
+                        {item.username && (
+                          <div className="mt-1 text-xs text-gray-500 pl-8 truncate">{item.username}</div>
                         )}
                       </div>
                       {/* hover 操作 */}
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0">
-                        <button onClick={() => toggleActive(item)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title={item.is_active ? '标记废弃' : '恢复使用'}>
-                          <Power className="w-3.5 h-3.5" />
-                        </button>
                         <button onClick={() => setItemDialog({ open: true, initial: { ...item, ...data } })} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="编辑">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>

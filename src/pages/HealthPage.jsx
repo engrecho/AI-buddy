@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Heart, Plus, Calendar, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera } from 'lucide-react';
+import { format } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
+import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 // ════════════════════════════════════════════════════════════════════
 // 设计系统（统一字号 / 间距 / 触摸目标）
@@ -373,7 +377,7 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
           </div>
           <div className="flex flex-col sm:flex-row gap-4">
             <Field label="出生日期" className="flex-1 min-w-0">
-              <Input type="date" value={form.birth_date || ''} onChange={e => set('birth_date', e.target.value)} />
+              <DateField value={form.birth_date || ''} onChange={v => set('birth_date', v)} placeholder="选择出生日期" />
             </Field>
             <Field label="状态" className="flex-1 min-w-0">
               <Select value={form.status} onValueChange={v => set('status', v)}>
@@ -413,43 +417,37 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 日期区间选择器 — 美化版，按钮在右侧
-// 单个级联组件：开始日期 + 结束日期，共用一个面板
+// 日期选择器 — Popover + Calendar，替代原生 input type="date"
+// 不会自动弹出，需点击触发；支持中文 locale
 // ════════════════════════════════════════════════════════════════════
-function DateRangeField({ label, startVal, endVal, onStartChange, onEndChange, required }) {
-  const today = new Date().toISOString().slice(0, 10);
+function DateField({ value, onChange, placeholder = '选择日期', disabled }) {
+  const date = value ? new Date(value + 'T00:00:00') : null;
   return (
-    <Field label={label} required={required}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[140px]">
-          <Input
-            type="date"
-            value={startVal || ''}
-            max={endVal || undefined}
-            onChange={e => onStartChange(e.target.value)}
-            className="pr-9"
-          />
-          <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        </div>
-        <span className="text-gray-400 text-sm flex-shrink-0">~</span>
-        <div className="relative flex-1 min-w-[140px]">
-          <Input
-            type="date"
-            value={endVal || ''}
-            min={startVal || undefined}
-            max={today}
-            onChange={e => onEndChange(e.target.value)}
-            className="pr-9"
-          />
-          <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        </div>
-      </div>
-      {(startVal || endVal) && (
-        <div className="text-xs text-gray-400 mt-1.5">
-          {formatDateRange(startVal, endVal) || '未设置'}
-        </div>
-      )}
-    </Field>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm text-left ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <CalendarIcon className="mr-2 h-4 w-4 text-gray-400 flex-shrink-0" />
+          {value ? (
+            <span className="text-gray-900">{format(date, 'yyyy-MM-dd')}</span>
+          ) : (
+            <span className="text-muted-foreground">{placeholder}</span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={(d) => onChange(d ? format(d, 'yyyy-MM-dd') : '')}
+          locale={zhCN}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -577,13 +575,10 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
           {/* 左栏：基本信息 */}
           <div className="space-y-4 lg:border-r lg:border-gray-100 lg:pr-5">
             <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 lg:hidden">
-              <Calendar className="w-4 h-4 text-blue-500" /> 基本信息
+              <CalendarIcon className="w-4 h-4 text-blue-500" /> 基本信息
             </div>
             <Field label="就诊日期" required>
-              <div className="relative">
-                <Input type="date" value={form.visit_date || ''} onChange={e => set('visit_date', e.target.value)} className="pr-9" />
-                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
+              <DateField value={form.visit_date || ''} onChange={v => set('visit_date', v)} placeholder="选择就诊日期" />
             </Field>
             <Field label="医院">
               <Input value={form.hospital || ''} onChange={e => set('hospital', e.target.value)} placeholder="如：市第一人民医院" />
@@ -640,14 +635,10 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
               <Textarea value={form.examination || ''} onChange={e => set('examination', e.target.value)} rows={3} placeholder="化验结果、检查所见" />
             </Field>
 
-            {/* 下次就诊日期区间（级联选择器，非必填） */}
-            <DateRangeField
-              label="下次就诊日期（可选区间）"
-              startVal={form.next_visit_date || ''}
-              endVal={form.next_visit_date_end || ''}
-              onStartChange={v => set('next_visit_date', v)}
-              onEndChange={v => set('next_visit_date_end', v)}
-            />
+            {/* 下次就诊日期（单日期组件） */}
+            <Field label="下次就诊日期（可选）">
+              <DateField value={form.next_visit_date || ''} onChange={v => set('next_visit_date', v)} placeholder="选择下次就诊日期" />
+            </Field>
 
             {/* 附件图片 */}
             <MultiImageUpload
@@ -792,10 +783,10 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
           {/* 日期可空 */}
           <div className="flex flex-col sm:flex-row gap-4">
             <Field label="开始日期" className="flex-1 min-w-0">
-              <Input type="date" value={form.start_date || ''} onChange={e => set('start_date', e.target.value)} />
+              <DateField value={form.start_date || ''} onChange={v => set('start_date', v)} placeholder="选择开始日期" />
             </Field>
             <Field label="结束日期" className="flex-1 min-w-0">
-              <Input type="date" value={form.end_date || ''} onChange={e => set('end_date', e.target.value)} />
+              <DateField value={form.end_date || ''} onChange={v => set('end_date', v)} placeholder="选择结束日期" />
             </Field>
           </div>
 
@@ -974,7 +965,7 @@ const HealthPage = () => {
                     <div className="space-y-1.5 text-xs text-gray-500">
                       {p.last_visit && (
                         <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                          <CalendarIcon className="w-3.5 h-3.5 flex-shrink-0" />
                           <span className="truncate">最近就诊：{formatDate(p.last_visit.visit_date)} {p.last_visit.hospital}</span>
                         </div>
                       )}
@@ -1159,7 +1150,7 @@ const HealthPage = () => {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-blue-500" />
+                <CalendarIcon className="w-4 h-4 text-blue-500" />
                 <h3 className="text-sm font-semibold">就诊记录</h3>
                 <Badge variant="secondary" className="text-xs">{selectedProfile.visits?.length || 0}</Badge>
               </div>
