@@ -153,6 +153,7 @@ const DashboardPage = ({ onNavigate }) => {
         </div>
 
         </div>
+        </div>
       </PullToRefresh>
   );
 };
