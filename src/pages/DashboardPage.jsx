@@ -46,7 +46,7 @@ const DashboardPage = ({ onNavigate }) => {
   return (
     <PullToRefresh onRefresh={fetchStats} className="h-full">
       <div className="min-h-full bg-[#f5f5f5]">
-      <div className="max-w-5xl mx-auto px-4 md:px-8 py-4 md:py-6 space-y-4 md:space-y-5">
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-4 md:py-6 space-y-4 md:space-y-5">
 
         {/* Greeting Banner */}
         <div
@@ -152,7 +152,7 @@ const DashboardPage = ({ onNavigate }) => {
           </div>
         </div>
 
-      </div>
+        </div>
       </PullToRefresh>
   );
 };
