@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { CheckCircle2, Circle, Flag, Calendar, User, Megaphone, GripVertical, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, CornerDownRight, Layers, Check } from "lucide-react";
+import { CheckCircle2, Circle, Flag, Calendar, User, GripVertical, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, CornerDownRight, Layers, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 // ─── 日期工具 ─────────────────────────────────────────────────────
@@ -24,8 +24,8 @@ const getDateBounds = () => {
   return { todayStr, in3Str, weekStartStr, weekEndStr };
 };
 
-// ─── 看板列定义 ───────────────────────────────────────────────────
-// 判断任务自身的 due_date / plan_date 任一满足指定日期范围
+// ─── 看板列定�? ───────────────────────────────────────────────────
+// 判断任务自身�? due_date / plan_date 任一满足指定日期范围
 const taskSelfMatchDate = (task, check) => {
   const dates = [task.due_date, task.plan_date].filter(Boolean).map(d => d.slice(0, 10));
   return dates.some(check);
@@ -55,18 +55,18 @@ const getColumns = () => {
       bgColor: "#fef2f2",
       borderColor: "#fecaca",
       dotColor: "bg-red-400",
-      // 自身满足：due_date 或 plan_date 任一 <= 今日
+      // 自身满足：due_date �? plan_date 任一 <= 今日
       matchSelf: (task) => taskSelfMatchDate(task, d => d <= todayStr),
       targetDate: todayStr,
     },
     {
       id: "3days",
-      label: "近3日待办",
+      label: "�?3日待�?",
       color: "#f97316",
       bgColor: "#fff7ed",
       borderColor: "#fed7aa",
       dotColor: "bg-orange-400",
-      // 自身满足：due_date 或 plan_date 任一在明天~3天内
+      // 自身满足：due_date �? plan_date 任一在明天~3天内
       matchSelf: (task) => taskSelfMatchDate(task, d => d >= tomorrowStr && d <= in3Str),
       targetDate: tomorrowStr,
     },
@@ -77,18 +77,18 @@ const getColumns = () => {
       bgColor: "#eff6ff",
       borderColor: "#bfdbfe",
       dotColor: "bg-blue-400",
-      // 自身满足：due_date 或 plan_date 任一在本周剩余天(3天后~周末)
+      // 自身满足：due_date �? plan_date 任一在本周剩余天(3天后~周末)
       matchSelf: (task) => taskSelfMatchDate(task, d => d >= in3NextStr && d <= weekEndStr),
       targetDate: weekEndStr,
     },
     {
       id: "later",
-      label: "非紧急待办",
+      label: "非紧急待�?",
       color: "#6b7280",
       bgColor: "#f9fafb",
       borderColor: "#e5e7eb",
       dotColor: "bg-gray-400",
-      // 无日期 或 日期超出本周
+      // 无日�? �? 日期超出本周
       matchSelf: (task) => {
         const dates = [task.due_date, task.plan_date].filter(Boolean).map(d => d.slice(0, 10));
         if (dates.length === 0) return true;
@@ -99,14 +99,14 @@ const getColumns = () => {
   ];
 };
 
-// ─── 优先级颜色 ───────────────────────────────────────────────────
+// ─── 优先级颜�? ───────────────────────────────────────────────────
 const PRIORITY_COLOR = {
   high: "text-red-500",
   medium: "text-amber-500",
   low: "text-gray-400",
 };
 
-// ─── 日期格式化工具：任意 ISO 字符串 → MM/DD HH:mm ─────────────
+// ─── 日期格式化工具：任意 ISO 字符�? �? MM/DD HH:mm ─────────────
 const formatDateTime = (str) => {
   if (!str) return "";
   try {
@@ -116,7 +116,7 @@ const formatDateTime = (str) => {
     const dd = String(d.getDate()).padStart(2, "0");
     const hh = String(d.getHours()).padStart(2, "0");
     const mi = String(d.getMinutes()).padStart(2, "0");
-    // 如果时间是 00:00，只显示日期
+    // 如果时间�? 00:00，只显示日期
     if (hh === "00" && mi === "00") return `${mm}/${dd}`;
     return `${mm}/${dd} ${hh}:${mi}`;
   } catch {
@@ -136,7 +136,7 @@ const KanbanCard = ({ task, allTasks, members, groups, onSelect, onToggleDone, i
   const today = toDateStr(new Date());
   const isOverdue = dateStr && dateStr.slice(0, 10) < today && task.status !== "done";
 
-  // 所属分组
+  // 所属分�?
   const group = groups && task.group_id
     ? groups.find((g) => g.id === task.group_id || String(g.id) === String(task.group_id))
     : null;
@@ -161,7 +161,7 @@ const KanbanCard = ({ task, allTasks, members, groups, onSelect, onToggleDone, i
           </div>
         )}
 
-        {/* 顶部：完成按钮 + 标题 */}
+        {/* 顶部：完成按�? + 标题 */}
         <div className="flex items-start gap-2">
           {/* 完成按钮 */}
           <button
@@ -183,15 +183,10 @@ const KanbanCard = ({ task, allTasks, members, groups, onSelect, onToggleDone, i
             }`}
           >
             {task.title}
-            {task.need_report && (
-              <span className="inline-flex items-center ml-1.5 align-middle">
-                <Megaphone className="h-3 w-3 text-orange-400" />
-              </span>
-            )}
           </button>
         </div>
 
-        {/* 底部：分组 + 日期 + 主R + 优先级 */}
+        {/* 底部：分�? + 日期 + 主R + 优先�? */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-6">
           {/* 分组标签 */}
           {group && (
@@ -214,10 +209,10 @@ const KanbanCard = ({ task, allTasks, members, groups, onSelect, onToggleDone, i
           {ownerNames.length > 0 && (
             <span className="flex items-center gap-0.5 text-[11px] text-gray-400 flex-shrink-0">
               <User className="h-3 w-3" />
-              {ownerNames.join("、")}
+              {ownerNames.join("�?")}
             </span>
           )}
-          {/* 优先级 */}
+          {/* 优先�? */}
           {task.priority && task.priority !== "medium" && (
             <Flag className={`h-3 w-3 ml-auto ${PRIORITY_COLOR[task.priority] || "text-gray-400"}`} />
           )}
@@ -227,7 +222,7 @@ const KanbanCard = ({ task, allTasks, members, groups, onSelect, onToggleDone, i
   );
 };
 
-// ─── 可拖拽卡片包装（PC） ─────────────────────────────────────────
+// ─── 可拖拽卡片包装（PC�? ─────────────────────────────────────────
 const DraggableCard = ({ task, allTasks, members, groups, onSelect, onToggleDone, onDragStart, onDragEnd, isDragging }) => {
   const cardRef = useRef(null);
 
@@ -292,7 +287,7 @@ const DraggableCard = ({ task, allTasks, members, groups, onSelect, onToggleDone
   );
 };
 
-// ─── PC 看板列 ────────────────────────────────────────────────────
+// ─── PC 看板�? ────────────────────────────────────────────────────
 const KanbanColumn = ({
   column,
   tasks,
@@ -361,7 +356,7 @@ const KanbanColumn = ({
           ))}
           {tasks.length === 0 && (
             <div className="flex items-center justify-center h-16 text-xs text-gray-300">
-              {isDragOver ? "松开放置到此列" : "暂无任务"}
+              {isDragOver ? "松开放置到此�?" : "暂无任务"}
             </div>
           )}
         </div>
@@ -370,7 +365,7 @@ const KanbanColumn = ({
   );
 };
 
-// ─── 移动端看板：上下排列 + 左滑切换列 ───────────────────────────
+// ─── 移动端看板：上下排列 + 左滑切换�? ───────────────────────────
 const MobileKanban = ({
   columns,
   getColumnTasks,
@@ -398,7 +393,7 @@ const MobileKanban = ({
   const handleTouchEnd = (e) => {
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = Math.abs(e.changedTouches[0].clientY - touchStartY.current);
-    // 水平滑动距离 > 60px 且垂直偏移 < 40px 才触发切换
+    // 水平滑动距离 > 60px 且垂直偏�? < 40px 才触发切�?
     if (Math.abs(dx) > 60 && dy < 40) {
       if (dx < 0 && activeColIdx < columns.length - 1) {
         setActiveColIdx((v) => v + 1);
@@ -441,14 +436,14 @@ const MobileKanban = ({
         })}
       </div>
 
-      {/* 左右切换箭头 + 内容区 */}
+      {/* 左右切换箭头 + 内容�? */}
       <div
         ref={containerRef}
         className="flex-1 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* 左箭头 */}
+        {/* 左箭�? */}
         {activeColIdx > 0 && (
           <button
             onClick={() => setActiveColIdx((v) => v - 1)}
@@ -457,7 +452,7 @@ const MobileKanban = ({
             <ChevronLeft className="h-4 w-4" />
           </button>
         )}
-        {/* 右箭头 */}
+        {/* 右箭�? */}
         {activeColIdx < columns.length - 1 && (
           <button
             onClick={() => setActiveColIdx((v) => v + 1)}
@@ -467,7 +462,7 @@ const MobileKanban = ({
           </button>
         )}
 
-        {/* 当前列内容 */}
+        {/* 当前列内�? */}
         <div
           className="h-full overflow-y-auto px-3 py-2 space-y-2"
           style={{ backgroundColor: col.bgColor }}
@@ -496,7 +491,7 @@ const MobileKanban = ({
         </div>
       </div>
 
-      {/* 底部分页点 */}
+      {/* 底部分页�? */}
       <div className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2 bg-white border-t border-gray-100">
         {columns.map((c, i) => (
           <button
@@ -680,7 +675,7 @@ const GroupFilterSelect = ({ groups, value, onChange }) => {
   );
 };
 
-// ─── 主看板视图 ───────────────────────────────────────────────────
+// ─── 主看板视�? ───────────────────────────────────────────────────
 const KanbanView = ({ tasks, members, groups, onSelect, onRefresh }) => {
   const [draggingTask, setDraggingTask] = useState(null);
   const [filterGroupId, setFilterGroupId] = useState("all");
@@ -699,7 +694,7 @@ const KanbanView = ({ tasks, members, groups, onSelect, onRefresh }) => {
     return true;
   });
 
-  // 分组筛选
+  // 分组筛�?
   const groupFilteredTasks = filterGroupId === "all"
     ? visibleTasks
     : visibleTasks.filter(t => String(t.group_id) === String(filterGroupId));
@@ -717,15 +712,15 @@ const KanbanView = ({ tasks, members, groups, onSelect, onRefresh }) => {
     week:   (d) => d >= _in3NextStr && d <= _weekEndStr,
   };
 
-  // 优先级顺序判断：今日 > 近3日 > 本周 > 非紧急
-  // 每个任务只归入优先级最高的列，不重复出现
+  // 优先级顺序判断：今日 > �?3�? > 本周 > 非紧�?
+  // 每个任务只归入优先级最高的列，不重复出�?
   const getTaskPriorityColumn = (task) => {
     if (task.status === "done") return null;
-    // 按优先级顺序依次检查
+    // 按优先级顺序依次检�?
     if (taskOrDescendantMatchDate(task, tasks, colCheckFns["today"])) return "today";
     if (taskOrDescendantMatchDate(task, tasks, colCheckFns["3days"])) return "3days";
     if (taskOrDescendantMatchDate(task, tasks, colCheckFns["week"])) return "week";
-    return "later"; // 无日期 或 日期超出本周
+    return "later"; // 无日�? �? 日期超出本周
   };
 
   const getColumnTasks = (col) => {
@@ -762,14 +757,14 @@ const KanbanView = ({ tasks, members, groups, onSelect, onRefresh }) => {
   };
 
   const moveTaskToColumn = async (task, column) => {
-    const newPlanDate = column.targetDate; // null => 非紧急（清空计划日期）
+    const newPlanDate = column.targetDate; // null => 非紧急（清空计划日期�?
     const currentPlanDate = task.plan_date ? task.plan_date.slice(0, 10) : null;
     if (currentPlanDate === newPlanDate) return;
 
     const update = { plan_date: newPlanDate, updated_at: new Date().toISOString() };
 
-    // 若拖拽后 due_date 早于新 plan_date，把 due_date 调整为与 plan_date 一致
-    // 避免出现「截止日期 < 计划日期」的矛盾状态
+    // 若拖拽后 due_date 早于�? plan_date，把 due_date 调整为与 plan_date 一�?
+    // 避免出现「截止日�? < 计划日期」的矛盾状�?
     if (newPlanDate && task.due_date) {
       const dueDateStr = task.due_date.slice(0, 10);
       if (dueDateStr < newPlanDate) {
@@ -800,12 +795,12 @@ const KanbanView = ({ tasks, members, groups, onSelect, onRefresh }) => {
         />
         {filterGroupId !== "all" && (
           <span className="text-xs text-gray-400">
-            共 {groupFilteredTasks.filter(t => t.status !== "done").length} 项待办
+            �? {groupFilteredTasks.filter(t => t.status !== "done").length} 项待�?
           </span>
         )}
       </div>
 
-      {/* PC 端：横向4列 */}
+      {/* PC 端：横向4�? */}
       <div className="hidden md:flex flex-1 overflow-x-auto overflow-y-hidden">
         <div className="flex gap-3 h-full p-4 min-w-max md:min-w-0 md:w-full">
           {columns.map((col) => {
@@ -849,13 +844,13 @@ const KanbanView = ({ tasks, members, groups, onSelect, onRefresh }) => {
         />
       </div>
 
-      {/* 底部提示（仅PC） */}
+      {/* 底部提示（仅PC�? */}
       <div className="hidden md:flex flex-shrink-0 px-4 py-1.5 bg-white border-t border-gray-100 items-center gap-4">
         <span className="text-xs text-gray-400">
-          拖拽卡片可自动更新计划日期 · 已完成任务次日自动隐藏
+          拖拽卡片可自动更新计划日�? · 已完成任务次日自动隐�?
         </span>
         <span className="ml-auto text-xs text-gray-400">
-          共 {groupFilteredTasks.filter((t) => t.status !== "done").length} 项待办
+          �? {groupFilteredTasks.filter((t) => t.status !== "done").length} 项待�?
         </span>
       </div>
     </div>

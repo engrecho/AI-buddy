@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { CheckSquare, FileText, Zap, BookOpen, ArrowRight, Circle, Loader2, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import PullToRefresh from "@/components/PullToRefresh";
 
 const STATUS_ICON = {
   todo: <Circle className="h-3.5 w-3.5 text-gray-400" />,
@@ -43,7 +44,8 @@ const DashboardPage = ({ onNavigate }) => {
   ];
 
   return (
-    <div className="h-full overflow-y-auto bg-[#f5f5f5]">
+    <PullToRefresh onRefresh={fetchStats} className="h-full">
+      <div className="min-h-full bg-[#f5f5f5]">
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-4 md:py-6 space-y-4 md:space-y-5">
 
         {/* Greeting Banner */}
@@ -151,7 +153,7 @@ const DashboardPage = ({ onNavigate }) => {
         </div>
 
       </div>
-    </div>
+      </PullToRefresh>
   );
 };
 

@@ -596,7 +596,7 @@ function MobileViewInline({ memo, groups, tags, tasks, groupMap, tagMap, onGoToT
   };
   const relatedTasks = (memo.related_task_ids || []).map((id) => tasks.find((t) => t.id === id)).filter(Boolean);
   return (
-    <div className='flex-1 overflow-y-auto px-4 py-4 space-y-3'>
+    <div className='flex-1 flex flex-col overflow-hidden px-4 py-4 space-y-3'>
       {/* 标题 */}
       <input
         value={titleVal}
@@ -639,7 +639,7 @@ function MobileViewInline({ memo, groups, tags, tasks, groupMap, tagMap, onGoToT
           {saveStatus === 'saved' && <span className='text-xs text-green-500'>已保存</span>}
         </div>
         <div className='flex-1 min-h-0'>
-          <RichEditor key={`${memo.id}-mobile`} value={contentVal} onChange={handleContentChange} placeholder='写下备忘内容…' />
+          <RichEditor key={`${memo.id}-mobile`} value={contentVal} onChange={handleContentChange} placeholder='写下备忘内容…' fullHeight />
         </div>
       </div>
     </div>
@@ -665,7 +665,7 @@ function MemoEditForm({ form, setForm, groups, tags, tasks, panelMode, onCancel,
           <X className='h-4 w-4' />
         </button>
       </div>
-      <div className='flex-1 overflow-y-auto px-5 py-4 space-y-4'>
+      <div className='flex-1 flex flex-col overflow-hidden px-5 py-4 space-y-4'>
         {/* 标题 */}
         <div></div>
         {/* 分组 + 标签（同一行，紧凑展示已选） */}
@@ -700,6 +700,7 @@ function MemoEditForm({ form, setForm, groups, tags, tasks, panelMode, onCancel,
                 }))
               }
               placeholder='写下备忘内容...'
+              fullHeight
             />
           </div>
         </div>
@@ -1053,7 +1054,7 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
         </div>
       </div>
 
-      <div className='flex-1 overflow-y-auto px-5 py-4 space-y-3'>
+      <div className='flex-1 flex flex-col overflow-hidden px-5 py-4 space-y-3'>
         {/* 关联链接 */}
         {memo.related_url && (
           <div className='rounded-xl bg-blue-50/60 border border-blue-100 px-3 py-2.5'>
@@ -1090,7 +1091,7 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
             {saveStatus === 'saved' && <span className='text-xs text-green-500'>已保存</span>}
           </div>
           <div className='flex-1 min-h-0'>
-            <RichEditor key={memo.id} value={contentVal} onChange={handleContentChange} placeholder='写下备忘内容…' />
+            <RichEditor key={memo.id} value={contentVal} onChange={handleContentChange} placeholder='写下备忘内容…' fullHeight />
           </div>
         </div>
       </div>

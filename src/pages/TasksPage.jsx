@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, MessageSquare, TrendingUp, Send, CheckCircle2, Trash2, Flag, ArrowLeft, Settings, X, ChevronDown, ChevronRight, Calendar, User, Users, Link2, Tag, ExternalLink, Filter, FolderOpen, AlertCircle, GitBranch, UserPlus, Megaphone, LayoutGrid, List, FileText, NotebookPen } from 'lucide-react';
+import { Plus, Search, MessageSquare, TrendingUp, Send, CheckCircle2, Trash2, Flag, ArrowLeft, Settings, X, ChevronDown, ChevronRight, Calendar, User, Users, Link2, Tag, ExternalLink, Filter, FolderOpen, AlertCircle, GitBranch, UserPlus, LayoutGrid, List, FileText, NotebookPen } from 'lucide-react';
+import PullToRefresh from '@/components/PullToRefresh';
 import { supabase, batchQuery } from '@/integrations/supabase/client';
 import { applyStoredTaskGroups, applyStoredTaskExtra, genId, getStoredTaskGroups, getStoredTaskGroupAssignments, saveStoredTaskGroups, setStoredTaskGroupAssignment, setStoredTaskExtra } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -809,7 +810,6 @@ const [form, setForm] = useState({
   successor_ids: task?.successor_ids || [],
   key_docs: task?.key_docs || [],
   tag_ids: task?.tag_ids || [],
-  need_report: task?.need_report ?? false,
   create_memo: false,
 });
   // 自动匹配分组提示（仅新建时生效）
@@ -1112,21 +1112,6 @@ const [groupAutoMatched, setGroupAutoMatched] = useState(false);
             })
           }
         />
-      </div>
-      <div>
-        <label className='text-xs text-gray-500 mb-1 block'>是否需要汇报</label>
-        <Select
-          value={form.need_report ? 'yes' : 'no'}
-          onValueChange={(v) => setForm({ ...form, need_report: v === 'yes' })}
-        >
-          <SelectTrigger className='h-10'>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value='no'>否</SelectItem>
-            <SelectItem value='yes'>是</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
       {/* 同步创建备忘（仅新建任务时展示） */}
       {isNew && (
@@ -1600,7 +1585,6 @@ const SubTaskQuickCreate = ({ parentTask, onCreated, onCancel }) => {
         tag_ids: [],
         key_docs: [],
         related_memo_ids: [],
-        need_report: false,
         created_at: now,
         updated_at: now,
       }]);
@@ -1748,11 +1732,10 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
   const handleFieldSave = async (patchArg) => {
     let patch = { ...patchArg };
     const { importance, urgency, owner_ids, supporter_ids, related_member_ids, predecessor_ids, successor_ids, ...dbPatch } = patch;
-    // related_member_ids / predecessor_ids / successor_ids / group_id / need_report 写入数据库
+    // related_member_ids / predecessor_ids / successor_ids / group_id 写入数据库
     if ('related_member_ids' in patch) dbPatch.related_member_ids = related_member_ids;
     if ('predecessor_ids' in patch) dbPatch.predecessor_ids = predecessor_ids;
     if ('successor_ids' in patch) dbPatch.successor_ids = successor_ids;
-    // need_report 直接写入数据库（已在 dbPatch 中，无需额外处理）
     // group_id 直接写入数据库（已有 tasks.group_id 字段）
     // 若修改了 plan_date 且 plan_date 晚于 due_date，则自动同步 due_date = plan_date
     if ('plan_date' in dbPatch && dbPatch.plan_date) {
@@ -1857,7 +1840,6 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
         tag_ids: [],
         key_docs: [],
         related_memo_ids: [],
-        need_report: false,
         created_at: now,
         updated_at: now,
       },
@@ -2401,30 +2383,6 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
               <span className='text-xs text-gray-300'>未设置</span>
             )}
           </InlineField>
-
-          {/* 是否需要汇报 */}
-          <div className='flex items-center gap-3 py-2 px-1 border-b border-gray-50 last:border-b-0'>
-            <div className='flex items-center gap-2 w-20 flex-shrink-0'>
-              <Flag className='h-3.5 w-3.5 text-gray-400 flex-shrink-0' />
-              <span className='text-xs text-gray-500'>需要汇报</span>
-            </div>
-            <div className='flex gap-2'>
-              {[['no', '否'], ['yes', '是']].map(([v, l]) => (
-                <button
-                  key={v}
-                  onClick={() => {
-                    const val = v === 'yes';
-                    setCurrentTask((prev) => ({ ...prev, need_report: val }));
-                    handleFieldSave({ need_report: val });
-                  }}
-                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${(v === 'yes' ? currentTask.need_report : !currentTask.need_report) ? 'text-[#2d4a00] border-transparent font-medium' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
-                  style={(v === 'yes' ? currentTask.need_report : !currentTask.need_report) ? { backgroundColor: '#bbea3b' } : {}}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* 前置任务（默认折叠） */}
           <CollapsibleField
@@ -3114,12 +3072,6 @@ const taskTags = tags.filter((t) => (task.tag_ids || []).includes(t.id));
             <div className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS[task.status]?.dot || ''}`} />
             <div className='min-w-0 flex-1 flex items-center gap-1.5'>
               <span className={`text-sm font-medium truncate ${task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</span>
-              {task.need_report && (
-                <span className='flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 border border-orange-200'>
-                  <Megaphone className='h-2.5 w-2.5' />
-                  汇报
-                </span>
-              )}
             </div>
             {subTasks.length > 0 && (
               <span className='text-[10px] text-gray-400 flex-shrink-0'>
@@ -3320,12 +3272,6 @@ const TaskMobileItem = ({ task, members, tags, groups, onSelect, isSelected }) =
       <div className='flex-1 min-w-0'>
         <div className='flex items-center gap-1.5'>
           <p className={`text-sm truncate flex-1 min-w-0 ${task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
-          {task.need_report && (
-            <span className='flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 border border-orange-200'>
-              <Megaphone className='h-2.5 w-2.5' />
-              汇报
-            </span>
-          )}
         </div>
         <div className='flex flex-wrap items-center gap-2 mt-1'>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATUS[task.status]?.bg || ''}`}>{STATUS[task.status]?.label}</span>
@@ -3406,8 +3352,8 @@ const MobileGroupSection = ({ group, tasks, members, tags, groups, onSelect, sel
   );
 }; // ─── FilterBar ────────────────────────────────────────────────────
 
-const FilterBar = ({ searchTerm, setSearchTerm, filterStatus, setFilterStatus, filterPriority, setFilterPriority, filterOwner, setFilterOwner, filterTag, setFilterTag, filterGroup, setFilterGroup, filterDate, setFilterDate, filterNeedReport, setFilterNeedReport, hideCompleted, setHideCompleted, members, tags, groups, showFilterPanel, setShowFilterPanel }) => {
-const hasFilter = filterStatus !== 'all' || filterPriority !== 'all' || filterOwner !== 'all' || filterTag !== 'all' || filterGroup !== 'all' || filterDate !== 'all' || filterNeedReport !== 'all' || hideCompleted;
+const FilterBar = ({ searchTerm, setSearchTerm, filterStatus, setFilterStatus, filterPriority, setFilterPriority, filterOwner, setFilterOwner, filterTag, setFilterTag, filterGroup, setFilterGroup, filterDate, setFilterDate, hideCompleted, setHideCompleted, members, tags, groups, showFilterPanel, setShowFilterPanel }) => {
+const hasFilter = filterStatus !== 'all' || filterPriority !== 'all' || filterOwner !== 'all' || filterTag !== 'all' || filterGroup !== 'all' || filterDate !== 'all' || hideCompleted;
   return (
     <div className='bg-white border-b border-gray-100 flex-shrink-0'>
       <div className='flex items-center gap-2 px-4 py-2.5'>
@@ -3468,16 +3414,6 @@ const hasFilter = filterStatus !== 'all' || filterPriority !== 'all' || filterOw
             {l}
           </button>
         ))}
-        {/* 分隔符 */}
-        <span className='flex-shrink-0 w-px h-4 bg-gray-200 mx-1' />
-        {/* 需要汇报 */}
-        <button
-          onClick={() => setFilterNeedReport(filterNeedReport === 'yes' ? 'all' : 'yes')}
-          className={`text-xs px-2.5 py-1 rounded-full transition-colors flex-shrink-0 ${filterNeedReport === 'yes' ? 'text-[#2d4a00] font-medium' : 'bg-gray-100 text-gray-500'}`}
-          style={filterNeedReport === 'yes' ? { backgroundColor: '#bbea3b' } : {}}
-        >
-          需要汇报
-        </button>
       </div>
       {showFilterPanel && (
         <div className='px-4 pb-3 border-t border-gray-50 pt-2.5 grid grid-cols-2 md:grid-cols-5 gap-3'>
@@ -3554,7 +3490,6 @@ const hasFilter = filterStatus !== 'all' || filterPriority !== 'all' || filterOw
                 setFilterTag('all');
                 setFilterGroup('all');
                 setFilterDate('all');
-                setFilterNeedReport('all');
                 setShowFilterPanel(false);
               }}
               className='text-xs text-gray-400 hover:text-gray-600 underline'
@@ -3744,7 +3679,6 @@ const TasksPage = ({ initialTaskId, onInitialTaskConsumed, onGoToMemo, onTasksLo
   const [filterTag, setFilterTag] = useState('all');
   const [filterGroup, setFilterGroup] = useState('all');
   const [filterDate, setFilterDate] = useState('all');
-const [filterNeedReport, setFilterNeedReport] = useState('all');
 const [hideCompleted, setHideCompleted] = useState(true);
 const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [colConfig, setColConfig] = useState(loadColumnConfig);
@@ -3835,7 +3769,7 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
   };
 
   const handleCreate = async (form) => {
-    const id = genId(); // importance / urgency / owner_ids / supporter_ids 由 localStorage 管理；group_id / related_member_ids / predecessor_ids / successor_ids / need_report 写入数据库
+    const id = genId(); // importance / urgency / owner_ids / supporter_ids 由 localStorage 管理；group_id / related_member_ids / predecessor_ids / successor_ids 写入数据库
     const { importance, urgency, owner_ids, supporter_ids, related_member_ids, predecessor_ids, successor_ids, create_memo, ...dbForm } = form;
     // 空字符串日期字段转为 null，避免数据库 timestamp 类型报错
     if (dbForm.due_date === '') dbForm.due_date = null;
@@ -3991,13 +3925,12 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
       if (filterGroup !== 'all' && filterGroup !== 'none' && task.group_id?.toString() !== filterGroup) return false;
       // 日期筛选：due_date/plan_date 任一满足，或任一子孙任务满足
       if (filterDate !== 'all' && !taskOrDescendantDateMatch(task)) return false;
-      if (filterNeedReport === 'yes' && !task.need_report) return false;
       if (hideCompleted && task.status === 'done') return false;
       if (searchTerm && !task.title.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     });
   };
-  const filteredTasks = useMemo(() => applyFilters(tasks), [tasks, filterStatus, filterPriority, filterOwner, filterTag, filterGroup, filterDate, filterNeedReport, hideCompleted, searchTerm]);
+  const filteredTasks = useMemo(() => applyFilters(tasks), [tasks, filterStatus, filterPriority, filterOwner, filterTag, filterGroup, filterDate, hideCompleted, searchTerm]);
   const topLevelTasks = filteredTasks.filter((t) => !t.parent_id);
   const groupedTasks = groups
     .map((g) => ({
@@ -4081,8 +4014,6 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
     setFilterGroup,
     filterDate,
     setFilterDate,
-    filterNeedReport,
-    setFilterNeedReport,
     hideCompleted,
     setHideCompleted,
     members,
@@ -4158,7 +4089,8 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
             />
           </div>
         ) : (
-          <div className='flex-1 overflow-y-auto bg-[#f5f5f5]'>
+          <PullToRefresh onRefresh={fetchAll} className='flex-1'>
+            <div className='min-h-full bg-[#f5f5f5]'>
             {/* 有分组时按分组展示，无分组时平铺 */}
             {groups.length > 0 ? (
               <div className='py-2'>
@@ -4199,6 +4131,7 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
               </div>
             )}
           </div>
+          </PullToRefresh>
         )}
         <button
           onClick={() => setIsCreating(true)}
@@ -4313,7 +4246,8 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
             />
           </div>
         ) : (
-          <div className='flex-1 overflow-y-auto p-4 space-y-4'>
+          <PullToRefresh onRefresh={fetchAll} className='flex-1'>
+            <div className='min-h-full p-4 space-y-4'>
             {groupedTasks.map((g, __dnd_i) => (
               <GroupSection
                 key={g.id}
@@ -4373,6 +4307,7 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
               </div>
             )}
           </div>
+          </PullToRefresh>
         )}
       </div>
 

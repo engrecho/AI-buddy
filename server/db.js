@@ -14,21 +14,21 @@ export const pool = mysql.createPool({
   dateStrings: false,
 });
 
-// ── 表结构定义（用于列名验证和 SQL 注入防护）──────────────
-// 注意：包含 user_id 的表需要用户登录后才能访问
+// ── 表结构定义（用于列名验证�? SQL 注入防护）──────────────
+// 注意：包�? user_id 的表需要用户登录后才能访问
 export const TABLE_COLUMNS = {
-  // 用户表（特殊，不参与通用 CRUD 路由）
+  // 用户表（特殊，不参与通用 CRUD 路由�?
   users: [
     'id', 'username', 'password_hash', 'nickname', 'avatar_url',
     'created_at', 'last_login_at'
   ],
-  // 业务表（需要 user_id 过滤）
+  // 业务表（需�? user_id 过滤�?
   tasks: [
     'id', 'user_id', 'title', 'description', 'status', 'priority', 'parent_id',
     'is_project', 'progress', 'due_date', 'plan_date', 'owner_id',
     'supporter_id', 'related_member_ids', 'owner_ids', 'supporter_ids',
     'group_id', 'tag_ids', 'key_docs', 'related_dx', 'predecessor_ids',
-    'successor_ids', 'related_memo_ids', 'need_report', 'created_at', 'updated_at'
+    'successor_ids', 'related_memo_ids', 'created_at', 'updated_at'
   ],
   task_groups: [
     'id', 'user_id', 'name', 'color', 'sort_order', 'keywords',
@@ -59,7 +59,7 @@ export const TABLE_COLUMNS = {
   quick_notes: [
     'id', 'user_id', 'content', 'tags', 'created_at'
   ],
-  // RSS 订阅源
+  // RSS 订阅�?
   rss_sources: [
     'id', 'user_id', 'name', 'url', 'description', 'site_url', 'color',
     'last_fetched_at', 'last_status', 'last_error', 'article_count',
@@ -88,7 +88,7 @@ export const TABLE_COLUMNS = {
     'usage_instruction', 'dosage', 'start_date', 'end_date', 'status', 'notes',
     'created_at', 'updated_at'
   ],
-  // ── 密码保险箱模块 ──
+  // ── 密码保险箱模�? ──
   vault_items: [
     'id', 'user_id', 'category', 'title', 'username', 'phone', 'email', 'login_methods',
     'cipher_secret', 'url', 'cipher_notes', 'is_active', 'tags',
@@ -97,10 +97,10 @@ export const TABLE_COLUMNS = {
 };
 
 // ── 不需要登录的公开表（只读，用于系统预设数据）───────────
-// 当前所有表都需要登录
+// 当前所有表都需要登�?
 export const PUBLIC_TABLES = new Set();
 
-// ── JSON 类型列 ──────────────────────────────────────────────
+// ── JSON 类型�? ──────────────────────────────────────────────
 export const JSON_COLUMNS = {
   tasks: [
     'related_member_ids', 'owner_ids', 'supporter_ids', 'tag_ids',
@@ -116,7 +116,7 @@ export const JSON_COLUMNS = {
   vault_items: ['tags', 'login_methods'],
 };
 
-// ── DATETIME 列 ──────────────────────────────────────────────
+// ── DATETIME �? ──────────────────────────────────────────────
 export const DATETIME_COLUMNS = {
   tasks: ['due_date', 'plan_date', 'created_at', 'updated_at'],
   task_groups: ['created_at', 'updated_at'],
@@ -136,9 +136,9 @@ export const DATETIME_COLUMNS = {
   vault_items: ['deleted_at', 'created_at', 'updated_at'],
 };
 
-// ── BOOLEAN 列 ───────────────────────────────────────────────
+// ── BOOLEAN �? ───────────────────────────────────────────────
 export const BOOLEAN_COLUMNS = {
-  tasks: ['is_project', 'need_report'],
+  tasks: ['is_project'],
   reading_items: ['is_read', 'is_starred', 'is_offline'],
   rss_articles: ['is_read', 'is_starred'],
   vault_items: ['is_active'],
