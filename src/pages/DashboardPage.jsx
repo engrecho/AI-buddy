@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckSquare, FileText, Zap, BookOpen, ArrowRight, Circle, Loader2, CheckCircle2 } from "lucide-react";
+import { CheckSquare, FileText, Zap, BookOpen, ArrowRight, Circle, Loader2, CheckCircle2, Wallet, Shield, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import PullToRefresh from "@/components/PullToRefresh";
 
@@ -15,6 +15,8 @@ const DashboardPage = ({ onNavigate }) => {
   const [recentTasks, setRecentTasks] = useState([]);
   const [recentNotes, setRecentNotes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [financeSummary, setFinanceSummary] = useState(null);
+  const [insuranceSummary, setInsuranceSummary] = useState(null);
 
   useEffect(() => { fetchStats(); }, []);
 
@@ -34,6 +36,17 @@ const DashboardPage = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
+    // 并行加载财务/保险汇总（不阻塞主统计）
+    try {
+      const token = localStorage.getItem('ai_buddy_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const [loanRes, insRes] = await Promise.all([
+        fetch('/api/loans/summary', { headers }).then(r => r.json()).catch(() => null),
+        fetch('/api/insurances/summary', { headers }).then(r => r.json()).catch(() => null),
+      ]);
+      setFinanceSummary(loanRes?.data || null);
+      setInsuranceSummary(insRes?.data || null);
+    } catch {}
   };
 
   const statItems = [
@@ -83,6 +96,56 @@ const DashboardPage = ({ onNavigate }) => {
             </button>
           ))}
         </div>
+
+        {/* 财务/保险提醒 */}
+        {(financeSummary || insuranceSummary) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* 本月待还 */}
+            {financeSummary && financeSummary.month_count > 0 && (
+              <button
+                onClick={() => onNavigate("finance")}
+                className="bg-white rounded-xl border border-gray-100 p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Wallet className="w-4 h-4" style={{ color: '#5a7a00' }} />
+                  <span className="text-sm font-medium text-gray-800">本月待还</span>
+                  <span className="ml-auto text-lg font-bold" style={{ color: '#5a7a00' }}>
+                    ¥{financeSummary.month_total?.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400">{financeSummary.month_count} 笔贷款待还</div>
+                {financeSummary.upcoming_payments?.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1 text-xs text-orange-500">
+                    <AlertCircle className="w-3 h-3" />
+                    {financeSummary.upcoming_payments.length} 笔 3 天内到期
+                  </div>
+                )}
+              </button>
+            )}
+            {/* 本月待缴保费 */}
+            {insuranceSummary && insuranceSummary.month_count > 0 && (
+              <button
+                onClick={() => onNavigate("health")}
+                className="bg-white rounded-xl border border-gray-100 p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-4 h-4" style={{ color: '#5a7a00' }} />
+                  <span className="text-sm font-medium text-gray-800">本月待缴保费</span>
+                  <span className="ml-auto text-lg font-bold" style={{ color: '#5a7a00' }}>
+                    ¥{insuranceSummary.month_total?.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400">{insuranceSummary.month_count} 份保单待续保</div>
+                {insuranceSummary.upcoming_expirations?.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1 text-xs text-orange-500">
+                    <AlertCircle className="w-3 h-3" />
+                    {insuranceSummary.upcoming_expirations.length} 份 7 天内到期
+                  </div>
+                )}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Bottom two columns on PC */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">

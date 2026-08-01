@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise';
 
-// ── 数据库连接池 ─────────────────────────────────────────────
+// â”€â”€ æ•°æ®åº“è¿žæŽ¥æ±  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '3306', 10),
@@ -14,15 +14,15 @@ export const pool = mysql.createPool({
   dateStrings: false,
 });
 
-// ── 表结构定义（用于列名验证�? SQL 注入防护）──────────────
-// 注意：包�? user_id 的表需要用户登录后才能访问
+// â”€â”€ è¡¨ç»“æž„å®šä¹‰ï¼ˆç”¨äºŽåˆ—åéªŒè¯å’? SQL æ³¨å…¥é˜²æŠ¤ï¼‰â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// æ³¨æ„ï¼šåŒ…å? user_id çš„è¡¨éœ€è¦ç”¨æˆ·ç™»å½•åŽæ‰èƒ½è®¿é—®
 export const TABLE_COLUMNS = {
-  // 用户表（特殊，不参与通用 CRUD 路由�?
+  // ç”¨æˆ·è¡¨ï¼ˆç‰¹æ®Šï¼Œä¸å‚ä¸Žé€šç”¨ CRUD è·¯ç”±ï¼?
   users: [
     'id', 'username', 'password_hash', 'nickname', 'avatar_url',
     'created_at', 'last_login_at'
   ],
-  // 业务表（需�? user_id 过滤�?
+  // ä¸šåŠ¡è¡¨ï¼ˆéœ€è¦? user_id è¿‡æ»¤ï¼?
   tasks: [
     'id', 'user_id', 'title', 'description', 'status', 'priority', 'parent_id',
     'is_project', 'progress', 'due_date', 'plan_date', 'owner_id',
@@ -59,19 +59,19 @@ export const TABLE_COLUMNS = {
   quick_notes: [
     'id', 'user_id', 'content', 'tags', 'created_at'
   ],
-  // RSS 订阅�?
+  // RSS è®¢é˜…æº?
   rss_sources: [
     'id', 'user_id', 'name', 'url', 'description', 'site_url', 'color',
     'last_fetched_at', 'last_status', 'last_error', 'article_count',
     'created_at', 'updated_at'
   ],
-  // RSS 文章
+  // RSS æ–‡ç« 
   rss_articles: [
     'id', 'user_id', 'source_id', 'guid', 'url', 'title', 'summary', 'content',
     'cover_url', 'author', 'categories', 'published_at', 'is_read', 'is_starred',
     'created_at', 'updated_at'
   ],
-  // ── 健康档案模块 ──
+  // â”€â”€ å¥åº·æ¡£æ¡ˆæ¨¡å— â”€â”€
   health_profiles: [
     'id', 'user_id', 'patient_name', 'patient_avatar_url', 'gender', 'birth_date',
     'disease_name', 'color', 'tags', 'status', 'notes',
@@ -88,19 +88,34 @@ export const TABLE_COLUMNS = {
     'usage_instruction', 'dosage', 'start_date', 'end_date', 'status', 'notes',
     'created_at', 'updated_at'
   ],
-  // ── 密码保险箱模�? ──
   vault_items: [
     'id', 'user_id', 'category', 'title', 'username', 'phone', 'email', 'login_methods',
     'cipher_secret', 'url', 'cipher_notes', 'is_active', 'tags',
     'deleted_at', 'created_at', 'updated_at'
   ],
+  loans: [
+    'id', 'user_id', 'name', 'loan_type', 'institution', 'principal', 'annual_rate',
+    'term_months', 'repayment_method', 'start_date', 'repayment_day', 'status', 'notes',
+    'created_at', 'updated_at'
+  ],
+  loan_payments: [
+    'id', 'user_id', 'loan_id', 'installment', 'due_date', 'due_amount',
+    'principal_amount', 'interest_amount', 'paid_amount', 'paid_date', 'status',
+    'created_at', 'updated_at'
+  ],
+  health_insurances: [
+    'id', 'user_id', 'profile_id', 'name', 'insurance_type', 'company', 'policy_no',
+    'insured_person', 'coverage_amount', 'annual_premium', 'effective_date', 'expiry_date',
+    'payment_frequency', 'auto_renew', 'beneficiary', 'beneficiary_ratio',
+    'coverage_terms', 'status', 'notes', 'created_at', 'updated_at'
+  ],
 };
 
-// ── 不需要登录的公开表（只读，用于系统预设数据）───────────
-// 当前所有表都需要登�?
+// â”€â”€ ä¸éœ€è¦ç™»å½•çš„å…¬å¼€è¡¨ï¼ˆåªè¯»ï¼Œç”¨äºŽç³»ç»Ÿé¢„è®¾æ•°æ®ï¼‰â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// å½“å‰æ‰€æœ‰è¡¨éƒ½éœ€è¦ç™»å½?
 export const PUBLIC_TABLES = new Set();
 
-// ── JSON 类型�? ──────────────────────────────────────────────
+// â”€â”€ JSON ç±»åž‹åˆ? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const JSON_COLUMNS = {
   tasks: [
     'related_member_ids', 'owner_ids', 'supporter_ids', 'tag_ids',
@@ -116,7 +131,7 @@ export const JSON_COLUMNS = {
   vault_items: ['tags', 'login_methods'],
 };
 
-// ── DATETIME �? ──────────────────────────────────────────────
+// â”€â”€ DATETIME åˆ? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const DATETIME_COLUMNS = {
   tasks: ['due_date', 'plan_date', 'created_at', 'updated_at'],
   task_groups: ['created_at', 'updated_at'],
@@ -134,13 +149,17 @@ export const DATETIME_COLUMNS = {
   health_visits: ['visit_date', 'next_visit_date', 'next_visit_date_end', 'created_at', 'updated_at'],
   health_medications: ['start_date', 'end_date', 'created_at', 'updated_at'],
   vault_items: ['deleted_at', 'created_at', 'updated_at'],
+  loans: ['start_date', 'created_at', 'updated_at'],
+  loan_payments: ['due_date', 'paid_date', 'created_at', 'updated_at'],
+  health_insurances: ['effective_date', 'expiry_date', 'created_at', 'updated_at'],
 };
 
-// ── BOOLEAN �? ───────────────────────────────────────────────
+// â”€â”€ BOOLEAN åˆ? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const BOOLEAN_COLUMNS = {
   tasks: ['is_project'],
   reading_items: ['is_read', 'is_starred', 'is_offline'],
   rss_articles: ['is_read', 'is_starred'],
   vault_items: ['is_active'],
   health_visits: ['is_reimbursed'],
+  health_insurances: ['auto_renew'],
 };

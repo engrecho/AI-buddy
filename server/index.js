@@ -1061,7 +1061,8 @@ const TABLES_WITH_USER_ID = new Set([
   'memos', 'task_notes', 'reading_items', 'quick_notes',
   'rss_sources', 'rss_articles',
   'health_profiles', 'health_visits', 'health_medications',
-  'vault_items'
+  'vault_items',
+  'loans', 'loan_payments', 'health_insurances'
 ]);
 
 function validateColumn(table, column) {
@@ -1707,6 +1708,250 @@ app.get('/api/health/profiles/:id/detail', authMiddleware, async (req, res) => {
 // ════════════════════════════════════════════════════════════
 // 通用 CRUD 路由
 // ════════════════════════════════════════════════════════════
+
+// ── 还款计划计算工具 ─────────────────────────────────────
+function calculatePaymentSchedule(principal, annualRate, termMonths, method, startDate, repaymentDay) {
+  const monthlyRate = annualRate / 12 / 100;
+  const schedule = [];
+  const baseDate = new Date(startDate);
+
+  for (let i = 1; i <= termMonths; i++) {
+    const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, Math.min(repaymentDay, 28));
+    let principalAmount, interestAmount, dueAmount;
+
+    if (method === 'equal_principal') {
+      // 等额本金
+      principalAmount = principal / termMonths;
+      interestAmount = (principal - principalAmount * (i - 1)) * monthlyRate;
+      dueAmount = principalAmount + interestAmount;
+    } else {
+      // 等额本息（默认）
+      if (monthlyRate === 0) {
+        dueAmount = principal / termMonths;
+        principalAmount = dueAmount;
+        interestAmount = 0;
+      } else {
+        const factor = Math.pow(1 + monthlyRate, termMonths);
+        dueAmount = principal * monthlyRate * factor / (factor - 1);
+        // 计算第 i 期的本金和利息
+        let remaining = principal;
+        for (let j = 1; j < i; j++) {
+          const interest = remaining * monthlyRate;
+          remaining -= (dueAmount - interest);
+        }
+        interestAmount = remaining * monthlyRate;
+        principalAmount = dueAmount - interestAmount;
+      }
+    }
+
+    schedule.push({
+      installment: i,
+      due_date: dueDate.toISOString().slice(0, 10),
+      due_amount: Math.round(dueAmount * 100) / 100,
+      principal_amount: Math.round(principalAmount * 100) / 100,
+      interest_amount: Math.round(interestAmount * 100) / 100,
+      paid_amount: 0,
+      paid_date: null,
+      status: 'pending',
+    });
+  }
+  return schedule;
+}
+
+// ── 贷款专用接口 ─────────────────────────────────────────
+
+// 创建贷款 + 自动生成还款计划
+app.post('/api/loans/create', authMiddleware, async (req, res) => {
+  const { name, loan_type, institution, principal, annual_rate, term_months,
+          repayment_method, start_date, repayment_day, notes } = req.body;
+
+  if (!name || !principal || !term_months || !start_date) {
+    return res.json({ data: null, error: { message: '缺少必填字段: name, principal, term_months, start_date' } });
+  }
+
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO loans (user_id, name, loan_type, institution, principal, annual_rate,
+        term_months, repayment_method, start_date, repayment_day, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, name, loan_type || 'other', institution || null, principal,
+       annual_rate || 0, term_months, repayment_method || 'equal_payment',
+       start_date, repayment_day || 1, notes || null]
+    );
+
+    const loanId = result.insertId;
+
+    // 自动生成还款计划
+    const schedule = calculatePaymentSchedule(
+      parseFloat(principal), parseFloat(annual_rate || 0), parseInt(term_months),
+      repayment_method || 'equal_payment', start_date, parseInt(repayment_day || 1)
+    );
+
+    for (const p of schedule) {
+      await pool.query(
+        `INSERT INTO loan_payments (user_id, loan_id, installment, due_date, due_amount,
+          principal_amount, interest_amount, paid_amount, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pending')`,
+        [req.user.id, loanId, p.installment, p.due_date, p.due_amount,
+         p.principal_amount, p.interest_amount]
+      );
+    }
+
+    return res.json({ data: { id: loanId, schedule }, error: null });
+  } catch (err) {
+    console.error('create loan error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 贷款详情（含还款计划）
+app.get('/api/loans/:id/detail', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 无效' } });
+  }
+  try {
+    const [loans] = await pool.query(
+      'SELECT * FROM loans WHERE id = ? AND user_id = ? LIMIT 1', [id, req.user.id]
+    );
+    if (loans.length === 0) {
+      return res.json({ data: null, error: { message: '贷款不存在' } });
+    }
+    const loan = transformRow('loans', loans[0]);
+
+    const [payments] = await pool.query(
+      'SELECT * FROM loan_payments WHERE loan_id = ? ORDER BY installment ASC', [id]
+    );
+    loan.payments = payments.map(p => transformRow('loan_payments', p));
+
+    // 汇总
+    const paidCount = loan.payments.filter(p => p.status === 'paid').length;
+    const totalPaid = loan.payments.reduce((sum, p) => sum + parseFloat(p.paid_amount || 0), 0);
+    const totalInterest = loan.payments.reduce((sum, p) => sum + parseFloat(p.interest_amount || 0), 0);
+    loan.summary = {
+      total_installments: loan.payments.length,
+      paid_installments: paidCount,
+      remaining_installments: loan.payments.length - paidCount,
+      total_paid: Math.round(totalPaid * 100) / 100,
+      total_interest: Math.round(totalInterest * 100) / 100,
+    };
+
+    return res.json({ data: loan, error: null });
+  } catch (err) {
+    console.error('loan detail error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 标记还款
+app.patch('/api/loan-payments/:id/mark', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { status, paid_amount, paid_date } = req.body;
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM loan_payments WHERE id = ? AND user_id = ? LIMIT 1', [id, req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.json({ data: null, error: { message: '还款记录不存在' } });
+    }
+
+    const updates = [];
+    const params = [];
+    if (status) { updates.push('status = ?'); params.push(status); }
+    if (paid_amount != null) { updates.push('paid_amount = ?'); params.push(paid_amount); }
+    if (paid_date != null) { updates.push('paid_date = ?'); params.push(paid_date); }
+    updates.push('updated_at = NOW()');
+    params.push(id, req.user.id);
+
+    await pool.query(`UPDATE loan_payments SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+
+    return res.json({ data: { id, updated: true }, error: null });
+  } catch (err) {
+    console.error('mark payment error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 贷款汇总（本月待还、临近提醒）
+app.get('/api/loans/summary', authMiddleware, async (req, res) => {
+  try {
+    // 本月待还
+    const [monthPayments] = await pool.query(
+      `SELECT lp.*, l.name as loan_name FROM loan_payments lp
+       JOIN loans l ON lp.loan_id = l.id
+       WHERE lp.user_id = ? AND lp.status = 'pending'
+       AND DATE_FORMAT(lp.due_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
+       ORDER BY lp.due_date ASC`,
+      [req.user.id]
+    );
+
+    // 3 天内到期未还
+    const [upcoming] = await pool.query(
+      `SELECT lp.*, l.name as loan_name FROM loan_payments lp
+       JOIN loans l ON lp.loan_id = l.id
+       WHERE lp.user_id = ? AND lp.status = 'pending'
+       AND lp.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+       ORDER BY lp.due_date ASC`,
+      [req.user.id]
+    );
+
+    const monthTotal = monthPayments.reduce((s, p) => s + parseFloat(p.due_amount || 0), 0);
+
+    return res.json({
+      data: {
+        month_payments: monthPayments.map(p => transformRow('loan_payments', p)),
+        upcoming_payments: upcoming.map(p => transformRow('loan_payments', p)),
+        month_total: Math.round(monthTotal * 100) / 100,
+        month_count: monthPayments.length,
+      },
+      error: null,
+    });
+  } catch (err) {
+    console.error('loans summary error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 保险汇总（本月待缴、临近续保）
+app.get('/api/insurances/summary', authMiddleware, async (req, res) => {
+  try {
+    // 7 天内到期
+    const [upcoming] = await pool.query(
+      `SELECT * FROM health_insurances
+       WHERE user_id = ? AND status = 'active'
+       AND expiry_date IS NOT NULL
+       AND expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+       ORDER BY expiry_date ASC`,
+      [req.user.id]
+    );
+
+    // 本月需缴费（到期日在本月或年缴保费的生效日月份在本月）
+    const [monthDue] = await pool.query(
+      `SELECT * FROM health_insurances
+       WHERE user_id = ? AND status = 'active'
+       AND expiry_date IS NOT NULL
+       AND DATE_FORMAT(expiry_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
+       ORDER BY expiry_date ASC`,
+      [req.user.id]
+    );
+
+    const monthTotal = monthDue.reduce((s, p) => s + parseFloat(p.annual_premium || 0), 0);
+
+    return res.json({
+      data: {
+        upcoming_expirations: upcoming.map(p => transformRow('health_insurances', p)),
+        month_due: monthDue.map(p => transformRow('health_insurances', p)),
+        month_total: Math.round(monthTotal * 100) / 100,
+        month_count: monthDue.length,
+      },
+      error: null,
+    });
+  } catch (err) {
+    console.error('insurances summary error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
 
 // SELECT
 app.get('/api/:table', requireAuthForBusinessTable, async (req, res) => {

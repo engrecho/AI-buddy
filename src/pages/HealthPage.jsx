@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera, Check } from 'lucide-react';
+import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera, Check, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Switch } from '@/components/ui/switch';
 
 // ════════════════════════════════════════════════════════════════════
 // 设计系统（统一字号 / 间距 / 触摸目标）
@@ -351,6 +352,59 @@ function MedicationStatusBadge({ status }) {
   if (status === 'stopped') return <Badge variant="secondary" className="text-xs">已停药</Badge>;
   if (status === 'as_needed') return <Badge className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-100">酌情使用</Badge>;
   return null;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 保险类型 / 状态 / 缴费频率 — 统一文案与配色
+// ════════════════════════════════════════════════════════════════════
+const INSURANCE_TYPE_OPTIONS = [
+  { value: 'critical_illness', label: '重疾' },
+  { value: 'medical', label: '医疗' },
+  { value: 'accident', label: '意外' },
+  { value: 'life', label: '寿险' },
+  { value: 'car', label: '车险' },
+  { value: 'property', label: '家财险' },
+  { value: 'other', label: '其他' },
+];
+
+const PAYMENT_FREQUENCY_OPTIONS = [
+  { value: 'yearly', label: '年缴' },
+  { value: 'monthly', label: '月缴' },
+  { value: 'onetime', label: '一次性' },
+];
+
+const INSURANCE_STATUS_OPTIONS = [
+  { value: 'active', label: '有效' },
+  { value: 'expired', label: '过期' },
+  { value: 'lapsed', label: '失效' },
+  { value: 'canceled', label: '已退保' },
+];
+
+function InsuranceTypeBadge({ type }) {
+  const map = {
+    critical_illness: <Badge className="text-xs bg-rose-100 text-rose-700 hover:bg-rose-100">重疾</Badge>,
+    medical: <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">医疗</Badge>,
+    accident: <Badge className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-100">意外</Badge>,
+    life: <Badge className="text-xs bg-purple-100 text-purple-700 hover:bg-purple-100">寿险</Badge>,
+    car: <Badge className="text-xs bg-cyan-100 text-cyan-700 hover:bg-cyan-100">车险</Badge>,
+    property: <Badge className="text-xs bg-teal-100 text-teal-700 hover:bg-teal-100">家财险</Badge>,
+    other: <Badge className="text-xs bg-gray-100 text-gray-700 hover:bg-gray-100">其他</Badge>,
+  };
+  return map[type] || map.other;
+}
+
+function InsuranceStatusBadge({ status }) {
+  const map = {
+    active: <Badge className="text-xs bg-green-100 text-green-700 hover:bg-green-100">有效</Badge>,
+    expired: <Badge variant="secondary" className="text-xs">过期</Badge>,
+    lapsed: <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-100">失效</Badge>,
+    canceled: <Badge variant="secondary" className="text-xs">已退保</Badge>,
+  };
+  return map[status] || null;
+}
+
+function paymentFrequencyLabel(v) {
+  return PAYMENT_FREQUENCY_OPTIONS.find(o => o.value === v)?.label || v || '';
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -865,6 +919,159 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
 }
 
 // ════════════════════════════════════════════════════════════════════
+// 保险表单 — 移动端单列 / 桌面端部分字段双列
+// 字段顺序固定：名称→类型→公司→保单号→被保人→保额→年保费
+//              →生效日→到期日→缴费频率→自动续保→受益人→受益比例
+//              →赔付条件→状态→备注
+// ════════════════════════════════════════════════════════════════════
+function InsuranceFormDialog({ open, onClose, onSubmit, initial }) {
+  const EMPTY = {
+    name: '', insurance_type: 'medical', company: '', policy_no: '',
+    insured_person: '', coverage_amount: '', annual_premium: '',
+    effective_date: '', expiry_date: '', payment_frequency: 'yearly',
+    auto_renew: false, beneficiary: '', beneficiary_ratio: '',
+    coverage_terms: '', status: 'active', notes: '',
+  };
+  const [form, setForm] = useState(EMPTY);
+
+  useEffect(() => {
+    if (open) {
+      if (initial) {
+        const n = normalizeFormDates(initial, ['effective_date', 'expiry_date']);
+        setForm({
+          name: n.name || '',
+          insurance_type: n.insurance_type || 'medical',
+          company: n.company || '',
+          policy_no: n.policy_no || '',
+          insured_person: n.insured_person || '',
+          coverage_amount: n.coverage_amount != null ? String(n.coverage_amount) : '',
+          annual_premium: n.annual_premium != null ? String(n.annual_premium) : '',
+          effective_date: n.effective_date || '',
+          expiry_date: n.expiry_date || '',
+          payment_frequency: n.payment_frequency || 'yearly',
+          auto_renew: !!n.auto_renew,
+          beneficiary: n.beneficiary || '',
+          beneficiary_ratio: n.beneficiary_ratio != null ? String(n.beneficiary_ratio) : '',
+          coverage_terms: n.coverage_terms || '',
+          status: n.status || 'active',
+          notes: n.notes || '',
+        });
+      } else {
+        setForm(EMPTY);
+      }
+    }
+  }, [open, initial]);
+
+  const handleSubmit = () => {
+    if (!form.name.trim()) { toast.error('请填写保险名称'); return; }
+    onSubmit(cleanForm(form));
+  };
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+        <DialogHeader>
+          <DialogTitle className="text-base">{initial ? '编辑保险' : '添加保险'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {/* 1. 保险名称 */}
+          <Field label="保险名称" required>
+            <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="如：平安福重疾险" />
+          </Field>
+          {/* 2. 类型 */}
+          <Field label="类型">
+            <Select value={form.insurance_type} onValueChange={v => set('insurance_type', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {INSURANCE_TYPE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          {/* 3. 保险公司 */}
+          <Field label="保险公司">
+            <Input value={form.company} onChange={e => set('company', e.target.value)} placeholder="如：中国平安" />
+          </Field>
+          {/* 4. 保单号 */}
+          <Field label="保单号">
+            <Input value={form.policy_no} onChange={e => set('policy_no', e.target.value)} />
+          </Field>
+          {/* 5. 被保人 */}
+          <Field label="被保人">
+            <Input value={form.insured_person} onChange={e => set('insured_person', e.target.value)} placeholder="如：张三" />
+          </Field>
+          {/* 6. 保额 + 7. 年保费 */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="保额（元）" className="flex-1 min-w-0">
+              <Input type="number" step="0.01" value={form.coverage_amount} onChange={e => set('coverage_amount', e.target.value)} placeholder="0.00" />
+            </Field>
+            <Field label="年保费（元）" className="flex-1 min-w-0">
+              <Input type="number" step="0.01" value={form.annual_premium} onChange={e => set('annual_premium', e.target.value)} placeholder="0.00" />
+            </Field>
+          </div>
+          {/* 8. 生效日 + 9. 到期日 */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="生效日" className="flex-1 min-w-0">
+              <DateField value={form.effective_date || ''} onChange={v => set('effective_date', v)} placeholder="选择生效日" />
+            </Field>
+            <Field label="到期日" className="flex-1 min-w-0">
+              <DateField value={form.expiry_date || ''} onChange={v => set('expiry_date', v)} placeholder="选择到期日" />
+            </Field>
+          </div>
+          {/* 10. 缴费频率 */}
+          <Field label="缴费频率">
+            <Select value={form.payment_frequency} onValueChange={v => set('payment_frequency', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PAYMENT_FREQUENCY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          {/* 11. 是否自动续保 */}
+          <Field label="是否自动续保">
+            <div className="flex items-center gap-3">
+              <Switch checked={form.auto_renew} onCheckedChange={v => set('auto_renew', v)} />
+              <span className="text-sm text-gray-600">{form.auto_renew ? '自动续保' : '不续保'}</span>
+            </div>
+          </Field>
+          {/* 12. 身故受益人 + 13. 受益比例 */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="身故受益人" className="flex-1 min-w-0">
+              <Input value={form.beneficiary} onChange={e => set('beneficiary', e.target.value)} placeholder="如：张三" />
+            </Field>
+            <Field label="受益比例" className="flex-1 min-w-0">
+              <Input value={form.beneficiary_ratio} onChange={e => set('beneficiary_ratio', e.target.value)} placeholder="如：100% / 50" />
+            </Field>
+          </div>
+          {/* 14. 赔付条件简述 */}
+          <Field label="赔付条件简述">
+            <Textarea value={form.coverage_terms} onChange={e => set('coverage_terms', e.target.value)} rows={3} placeholder="如：确诊重疾赔付100%保额" />
+          </Field>
+          {/* 15. 状态 */}
+          <Field label="状态">
+            <Select value={form.status} onValueChange={v => set('status', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {INSURANCE_STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          {/* 16. 备注 */}
+          <Field label="备注">
+            <Textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>取消</Button>
+          <Button onClick={handleSubmit} className="bg-[#bbea3b] hover:bg-[#a8d435] text-black">保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
 // 主组件
 // ════════════════════════════════════════════════════════════════════
 const HealthPage = () => {
@@ -877,6 +1084,8 @@ const HealthPage = () => {
   const [profileDialog, setProfileDialog] = useState({ open: false, initial: null });
   const [visitDialog, setVisitDialog] = useState({ open: false, initial: null });
   const [medDialog, setMedDialog] = useState({ open: false, initial: null, visitId: null });
+  const [insuranceDialog, setInsuranceDialog] = useState({ open: false, initial: null });
+  const [insurances, setInsurances] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const loadProfiles = useCallback(async () => {
@@ -895,7 +1104,21 @@ const HealthPage = () => {
     setDetailLoading(false);
   }, []);
 
+  // ── 保险记录：通用 CRUD，filter=profile_id.eq.<ID>，按创建时间倒序 ──
+  const loadInsurances = useCallback(async (profileId) => {
+    if (!profileId) { setInsurances([]); return; }
+    const r = await api(`/api/health_insurances?filter=profile_id.eq.${profileId}&order=created_at:desc`);
+    if (Array.isArray(r.data)) setInsurances(r.data);
+    else if (r.error) toast.error(r.error.message);
+  }, []);
+
   useEffect(() => { loadProfiles(); }, [loadProfiles]);
+
+  // 选中档案变化时加载保险列表
+  useEffect(() => {
+    if (selectedProfile) loadInsurances(selectedProfile.id);
+    else setInsurances([]);
+  }, [selectedProfile, loadInsurances]);
 
   // ── 档案操作（PATCH 带 filter，body 不带 id）─────────────
   const saveProfile = async (form) => {
@@ -941,16 +1164,44 @@ const HealthPage = () => {
     loadProfiles();
   };
 
+  // ── 保险记录：POST 创建 / PATCH?id=eq.<ID> 更新 ──
+  const saveInsurance = async (form) => {
+    const isNew = !insuranceDialog.initial;
+    const id = insuranceDialog.initial?.id;
+    const body = { ...form };
+    delete body.id;
+    // 数字字段：空字符串 → null，否则 parseFloat
+    body.coverage_amount = form.coverage_amount ? parseFloat(form.coverage_amount) : null;
+    body.annual_premium = form.annual_premium ? parseFloat(form.annual_premium) : null;
+    // auto_renew：boolean → tinyint 1/0
+    body.auto_renew = form.auto_renew ? 1 : 0;
+    body.profile_id = selectedProfile?.id;
+    const path = isNew ? '/api/health_insurances' : `/api/health_insurances?id=eq.${id}`;
+    const method = isNew ? 'POST' : 'PATCH';
+    const r = await api(path, { method, body });
+    if (r.error) { toast.error(r.error.message); return; }
+    toast.success(isNew ? '保险已添加' : '已保存');
+    setInsuranceDialog({ open: false, initial: null });
+    if (selectedProfile) loadInsurances(selectedProfile.id);
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const { type, id } = deleteTarget;
-    const tableMap = { profile: 'health_profiles', visit: 'health_visits', medication: 'health_medications' };
-    const table = tableMap[type];
-    const r = await api(`/api/${table}?filter=eq:id:${id}`, { method: 'DELETE' });
+    let r;
+    if (type === 'insurance') {
+      // 保险走通用 CRUD，DELETE 用 ?id=eq.<ID>
+      r = await api(`/api/health_insurances?id=eq.${id}`, { method: 'DELETE' });
+    } else {
+      const tableMap = { profile: 'health_profiles', visit: 'health_visits', medication: 'health_medications' };
+      const table = tableMap[type];
+      r = await api(`/api/${table}?filter=eq:id:${id}`, { method: 'DELETE' });
+    }
     if (r.error) { toast.error(r.error.message); return; }
     toast.success('已删除');
     setDeleteTarget(null);
     if (type === 'profile') { setSelectedProfile(null); loadProfiles(); }
+    else if (type === 'insurance') { if (selectedProfile) loadInsurances(selectedProfile.id); }
     else if (selectedProfile) loadDetail(selectedProfile.id);
   };
 
@@ -1196,6 +1447,109 @@ const HealthPage = () => {
             )}
           </div>
 
+          {/* 家庭保险 — 展示该档案下所有保险记录，到期7天内标红 */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-[#5a7a00]" />
+                <h3 className="text-sm font-semibold">家庭保险</h3>
+                <Badge variant="secondary" className="text-xs">{insurances.length}</Badge>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setInsuranceDialog({ open: true, initial: null })} className="active:scale-95">
+                <Plus className="w-3.5 h-3.5 mr-1" /> 添加保险
+              </Button>
+            </div>
+            {insurances.length === 0 ? (
+              <p className="text-xs text-gray-400 py-6 text-center">暂无保险记录</p>
+            ) : (
+              <div className="space-y-2">
+                {insurances.map(ins => {
+                  const days = daysUntil(ins.expiry_date);
+                  const nearExpiry = days !== null && days >= 0 && days <= 7;
+                  const expired = days !== null && days < 0;
+                  return (
+                    <div key={ins.id} className="p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          {/* 名称 + 类型 + 状态 + 自动续保 */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-medium truncate">{ins.name}</span>
+                            <InsuranceTypeBadge type={ins.insurance_type} />
+                            <InsuranceStatusBadge status={ins.status} />
+                            {ins.auto_renew ? (
+                              <Badge className="text-xs bg-[#bbea3b]/30 text-[#5a7a00] hover:bg-[#bbea3b]/30">自动续保</Badge>
+                            ) : null}
+                          </div>
+                          {/* 公司 + 保单号 + 被保人 */}
+                          {(ins.company || ins.policy_no || ins.insured_person) && (
+                            <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2 flex-wrap">
+                              {ins.company && <span className="truncate">{ins.company}</span>}
+                              {ins.policy_no && <span className="text-gray-400">保单号：{ins.policy_no}</span>}
+                              {ins.insured_person && <span className="text-gray-400">被保人：{ins.insured_person}</span>}
+                            </div>
+                          )}
+                          {/* 保额 + 年保费 + 缴费频率 */}
+                          {(ins.coverage_amount != null || ins.annual_premium != null || ins.payment_frequency) && (
+                            <div className="text-xs text-gray-500 mt-1 flex items-center gap-3 flex-wrap">
+                              {ins.coverage_amount != null && <span>保额：¥{Number(ins.coverage_amount).toLocaleString()}</span>}
+                              {ins.annual_premium != null && <span>年保费：¥{Number(ins.annual_premium).toLocaleString()}</span>}
+                              {ins.payment_frequency && <span>{paymentFrequencyLabel(ins.payment_frequency)}</span>}
+                            </div>
+                          )}
+                          {/* 生效日 + 到期日（临近7天标红） */}
+                          {(ins.effective_date || ins.expiry_date) && (
+                            <div className="text-xs mt-1 flex items-center gap-2 flex-wrap">
+                              {ins.effective_date && <span className="text-gray-400">生效：{formatDate(ins.effective_date)}</span>}
+                              {ins.expiry_date && (
+                                <span className={nearExpiry || expired ? 'text-red-500 font-medium' : 'text-gray-400'}>
+                                  到期：{formatDate(ins.expiry_date)}
+                                  {nearExpiry ? `（${days}天后）` : expired ? '（已过期）' : ''}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {/* 受益人 + 比例 */}
+                          {(ins.beneficiary || ins.beneficiary_ratio) && (
+                            <div className="text-xs text-gray-400 mt-1">
+                              {ins.beneficiary && <span>受益人：{ins.beneficiary}</span>}
+                              {ins.beneficiary && ins.beneficiary_ratio && ' · '}
+                              {ins.beneficiary_ratio && <span>比例：{ins.beneficiary_ratio}</span>}
+                            </div>
+                          )}
+                          {/* 赔付条件简述 */}
+                          {ins.coverage_terms && (
+                            <div className="text-xs text-gray-400 mt-1 line-clamp-2 break-words">{ins.coverage_terms}</div>
+                          )}
+                          {/* 备注 */}
+                          {ins.notes && (
+                            <div className="text-xs text-gray-400 mt-1 line-clamp-2 break-words">{ins.notes}</div>
+                          )}
+                        </div>
+                        {/* 操作按钮 */}
+                        <div className="flex gap-0.5 flex-shrink-0">
+                          <button
+                            onClick={() => setInsuranceDialog({ open: true, initial: ins })}
+                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-[#5a7a00] hover:bg-gray-100 rounded-md transition-colors active:scale-90"
+                            aria-label="编辑保险"
+                          >
+                            <Shield className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget({ type: 'insurance', id: ins.id, name: ins.name })}
+                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90"
+                            aria-label="删除保险"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* 就诊历史时间轴 — 整行可点击打开编辑 */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
@@ -1329,6 +1683,12 @@ const HealthPage = () => {
         initial={medDialog.initial}
         profileId={selectedProfile?.id}
         visitId={medDialog.visitId}
+      />
+      <InsuranceFormDialog
+        open={insuranceDialog.open}
+        onClose={() => setInsuranceDialog({ open: false, initial: null })}
+        onSubmit={saveInsurance}
+        initial={insuranceDialog.initial}
       />
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <AlertDialogContent>

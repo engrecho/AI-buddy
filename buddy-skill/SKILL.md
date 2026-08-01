@@ -410,6 +410,50 @@ buddy-skill **已内置**社媒内容解析（抖音 / B 站 / 小红书 / 公�
 | `/api/vault/items/:id` | PATCH | 更新字段 |
 | `/api/vault/items/:id` | DELETE | 软删（更新 `deleted_at`） |
 
+### 财务与保险 API（仅前端使用，未通过 X-API-Key 鉴权）
+
+> ⚠️ 财务与保险接口走 `/api/loans` / `/api/loan-payments` / `/api/insurances` 等前缀（**不是** `/api/v1/*`），使用 JWT Cookie 鉴权（前端），**当前未在 buddy-skill CLI 中暴露**。AI 助手暂不支持通过 API Key 直接查询贷款与保险数据。如需 AI 助手访问，需后端把这些接口接入 `/api/v1/*` 前缀并支持 X-API-Key 鉴权。
+
+数据模型概览（详见 [docs/DATABASE.md](../docs/DATABASE.md) 第 16-18 节）：
+
+| 表 | 用途 |
+|----|------|
+| `loans` | 贷款主表（房贷/车贷/消费贷/信用卡分期等） |
+| `loan_payments` | 还款计划表（创建贷款时自动生成，支持手动标记已还） |
+| `health_insurances` | 家庭保险（重疾/医疗/意外/寿险/车险/家财险等，可关联健康档案） |
+
+专用接口（仅供前端调用，AI 助手不可用）：
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/api/loans/create` | POST | 创建贷款并自动生成完整还款计划 |
+| `/api/loans/:id/detail` | GET | 贷款详情（含还款计划 + 汇总：已还期数/已还总额/总利息） |
+| `/api/loan-payments/:id/mark` | PATCH | 标记还款（标记已还/撤销） |
+| `/api/loans/summary` | GET | 本月待还金额 + 3 天内到期提醒 |
+| `/api/insurances/summary` | GET | 本月待缴保费 + 7 天内到期提醒 |
+
+通用 CRUD（仅供前端调用，AI 助手不可用，走 `/api/:table` 通用路由）：
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/api/loans` | GET/POST | 贷款列表 / 新增 |
+| `/api/loans/:id` | GET/PATCH/DELETE | 单贷款 CRUD |
+| `/api/loan_payments` | GET/POST | 还款计划列表 / 新增 |
+| `/api/loan_payments/:id` | GET/PATCH/DELETE | 单还款记录 CRUD |
+| `/api/health_insurances` | GET/POST | 保险列表 / 新增 |
+| `/api/health_insurances/:id` | GET/PATCH/DELETE | 单保险 CRUD |
+
+**业务约定**：
+- `loans.loan_type` 枚举：`mortgage`(房贷) / `car`(车贷) / `consumer`(消费贷) / `credit_card`(信用卡分期) / `other`(其他)
+- `loans.repayment_method` 枚举：`equal_payment`(等额本息) / `equal_principal`(等额本金)
+- `loans.status` 枚举：`active`(还款中) / `paid_off`(已结清) / `closed`(已关闭)
+- `loan_payments.status` 枚举：`pending`(待还) / `paid`(已还) / `overdue`(逾期) / `partial`(部分还款)
+- `health_insurances.insurance_type` 枚举：`critical_illness`(重疾) / `medical`(医疗) / `accident`(意外) / `life`(寿险) / `car`(车险) / `property`(家财险) / `other`(其他)
+- `health_insurances.payment_frequency` 枚举：`yearly`(年缴) / `monthly`(月缴) / `onetime`(一次性)
+- `health_insurances.status` 枚举：`active`(有效) / `expired`(过期) / `lapsed`(失效) / `canceled`(已退保)
+- `health_insurances.auto_renew` 是布尔字段
+- `health_insurances.profile_id` 可空，关联 `health_profiles.id`
+
 ### 任务查询参数
 
 | 参数 | 类型 | 说明 |

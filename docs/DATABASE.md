@@ -43,6 +43,9 @@
 | `health_visits` | 就诊记录 | AUTO_INCREMENT | 否 |
 | `health_medications` | 用药记录 | AUTO_INCREMENT | 否 |
 | `vault_items` | 密码保险箱（加密存储） | AUTO_INCREMENT | **是**（`deleted_at`） |
+| `loans` | 贷款主表 | AUTO_INCREMENT | 否 |
+| `loan_payments` | 还款计划表 | AUTO_INCREMENT | 否 |
+| `health_insurances` | 家庭保险 | AUTO_INCREMENT | 否 |
 
 **主键约定**：
 - 早期版本统一用「手写 bigint（`Date.now()` 时间戳）」；迁移到 MySQL 后，POST 接口要求 DB 给出 `insertId`，因此部分表改为 `AUTO_INCREMENT`（详见 `deploy/migrate-add-auto-increment.sql`）
@@ -463,6 +466,100 @@ mysql -u buddy -p'密码' buddy < deploy/migrate-add-auto-increment.sql
 - `migrate-add-user-id.sql`：早期表加 `user_id` 字段
 - `migrate-add-api-keys.sql`：新增 `api_keys` 表
 - `migrate-add-auto-increment.sql`：把部分手写 bigint 改为 AUTO_INCREMENT（满足 SKILL POST 接口需要 `insertId`）
+
+---
+
+## 16. loans（贷款主表）
+
+```sql
+CREATE TABLE `loans` (
+    `id`               BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id`          BIGINT NOT NULL,
+    `name`             VARCHAR(255) NOT NULL,                        -- 贷款名称
+    `loan_type`        ENUM('mortgage','car','consumer','credit_card','other') NOT NULL DEFAULT 'other',  -- 贷款类型
+    `institution`      VARCHAR(255) NULL,                            -- 贷款机构
+    `principal`        DECIMAL(12,2) NOT NULL,                       -- 本金
+    `annual_rate`      DECIMAL(6,4) NOT NULL,                        -- 年利率（如 0.0485 表示 4.85%）
+    `term_months`      INT NOT NULL,                                 -- 期数（月）
+    `repayment_method` ENUM('equal_payment','equal_principal') NOT NULL DEFAULT 'equal_payment',  -- 还款方式
+    `start_date`       DATE NOT NULL,                                -- 放款日
+    `repayment_day`    TINYINT NOT NULL DEFAULT 1,                   -- 每月还款日（1-28）
+    `status`           ENUM('active','paid_off','closed') NOT NULL DEFAULT 'active',  -- 状态
+    `notes`            TEXT NULL,                                    -- 备注
+    `created_at`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+- `loan_type` 贷款类型：`mortgage`(房贷) / `car`(车贷) / `consumer`(消费贷) / `credit_card`(信用卡分期) / `other`(其他)
+- `repayment_method` 还款方式：`equal_payment`(等额本息) / `equal_principal`(等额本金)
+- `status` 状态：`active`(还款中) / `paid_off`(已结清) / `closed`(已关闭)
+- `annual_rate` 用小数存年利率（4.85% 存为 `0.0485`）
+- 创建贷款时后端按 `repayment_method` + `principal` + `annual_rate` + `term_months` + `start_date` + `repayment_day` 自动生成 `loan_payments` 还款计划
+
+---
+
+## 17. loan_payments（还款计划表）
+
+```sql
+CREATE TABLE `loan_payments` (
+    `id`               BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id`          BIGINT NOT NULL,
+    `loan_id`          BIGINT NOT NULL,                              -- 关联 loans.id
+    `installment`      INT NOT NULL,                                 -- 第几期（从 1 开始）
+    `due_date`         DATE NOT NULL,                                -- 应还日期
+    `due_amount`       DECIMAL(12,2) NOT NULL,                       -- 应还总额（本金+利息）
+    `principal_amount` DECIMAL(12,2) NOT NULL,                       -- 本金部分
+    `interest_amount`  DECIMAL(12,2) NOT NULL,                       -- 利息部分
+    `paid_amount`      DECIMAL(12,2) NOT NULL DEFAULT 0,             -- 已还金额
+    `paid_date`        DATE NULL,                                    -- 实际还款日
+    `status`           ENUM('pending','paid','overdue','partial') NOT NULL DEFAULT 'pending',  -- 状态
+    `created_at`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+- `loan_id` 关联 `loans.id`，创建贷款时自动生成全部期数的还款记录
+- `status` 状态：`pending`(待还) / `paid`(已还) / `overdue`(逾期) / `partial`(部分还款)
+- 支持手动标记已还 / 撤销（前端 `PATCH /api/loan-payments/:id/mark`）
+- 前端展示规则：3 天内到期标橙色、逾期标红色
+
+---
+
+## 18. health_insurances（家庭保险）
+
+```sql
+CREATE TABLE `health_insurances` (
+    `id`                BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id`           BIGINT NOT NULL,
+    `profile_id`        BIGINT NULL,                                 -- 关联 health_profiles.id（可空）
+    `name`              VARCHAR(255) NOT NULL,                       -- 保险名称
+    `insurance_type`    ENUM('critical_illness','medical','accident','life','car','property','other') NOT NULL DEFAULT 'other',  -- 保险类型
+    `company`           VARCHAR(255) NULL,                           -- 保险公司
+    `policy_no`         VARCHAR(100) NULL,                           -- 保单号
+    `insured_person`    VARCHAR(100) NULL,                           -- 被保人
+    `coverage_amount`   DECIMAL(12,2) NULL,                          -- 保额
+    `annual_premium`    DECIMAL(12,2) NULL,                          -- 年保费
+    `effective_date`    DATE NULL,                                   -- 生效日
+    `expiry_date`       DATE NULL,                                   -- 到期日
+    `payment_frequency` ENUM('yearly','monthly','onetime') NOT NULL DEFAULT 'yearly',  -- 缴费频率
+    `auto_renew`        TINYINT(1) NOT NULL DEFAULT 0,               -- 是否自动续保
+    `beneficiary`       VARCHAR(255) NULL,                           -- 身故受益人
+    `beneficiary_ratio` VARCHAR(100) NULL,                           -- 受益比例
+    `coverage_terms`    TEXT NULL,                                   -- 赔付条件
+    `status`            ENUM('active','expired','lapsed','canceled') NOT NULL DEFAULT 'active',  -- 状态
+    `notes`             TEXT NULL,                                   -- 备注
+    `created_at`        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+- `profile_id` 可空：关联到具体健康档案（就诊人），也可不关联直接作为家庭保险
+- `insurance_type` 保险类型：`critical_illness`(重疾) / `medical`(医疗) / `accident`(意外) / `life`(寿险) / `car`(车险) / `property`(家财险) / `other`(其他)
+- `payment_frequency` 缴费频率：`yearly`(年缴) / `monthly`(月缴) / `onetime`(一次性)
+- `status` 状态：`active`(有效) / `expired`(过期) / `lapsed`(失效) / `canceled`(已退保)
+- `auto_renew` 是布尔字段（`BOOLEAN_COLUMNS` 已配置）
+- 前端展示规则：到期日临近 7 天标红提醒
 
 ---
 
