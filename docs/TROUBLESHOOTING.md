@@ -371,3 +371,9 @@ git remote set-url origin https://gh-proxy.com/https://github.com/engrecho/AI-bu
 **修复**：外层容器加 `min-h-0 overflow-hidden`（`src/components/PullToRefresh.jsx`）。
 
 **经验**：凡是「flex 纵向布局 + 内部滚动」的组件，滚动的那个容器（或其包裹层）必须加 `min-h-0`，否则高度链必断。同页面的 note/kanban 视图用 `flex-1 overflow-hidden` 是正确写法，可对照。
+
+**连带坑（同日发现）**：修完高度链后移动端"使劲下滑"仍异常——列表顶部用力下拉时，手机浏览器**原生下拉刷新**（滚动链冒泡到页面）与组件**自定义下拉刷新**同时触发，页面被大规模拽下并互相打架。修法（同文件）：
+
+1. 滚动容器加 `overscroll-behavior-y: contain`，切断滚动链，禁掉浏览器原生下拉刷新与 iOS 橡皮筋
+2. `touchmove` 用**原生** `addEventListener`（`passive: false`）监听，下拉时 `preventDefault()` 接管手势——React 合成事件的 touchmove 是 passive 的，拦不住原生手势
+3. 只有列表静止在顶部且手指明确下滑超 8px 才进入下拉判定（惯性滚动中不误触），下拉位移加阻尼封顶 90px
