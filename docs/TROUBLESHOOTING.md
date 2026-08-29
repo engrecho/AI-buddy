@@ -361,3 +361,13 @@ git remote set-url origin https://gh-proxy.com/https://github.com/engrecho/AI-bu
 ### 10. 飞书 wiki 中文乱码
 
 通过 lark-cli 写飞书 docx 时，如果用 Python `json.dumps(content)` 默认 `ensure_ascii=True`，会把 UTF-8 中文转成 `\u4e5d\u3001...` 字面字符串。修法：`json.dumps(content, ensure_ascii=False)`。
+
+### 11. flex 布局高度链断裂导致列表无法滑动（2026-08 复盘）
+
+**现象**：任务页（移动端+PC 列表视图）内容超出一屏时滑不动，底部内容被裁掉。
+
+**原因**：`PullToRefresh` 外层容器是 flex 纵向布局的子项（`flex-1`），但没加 `min-h-0`。flex 子项默认 `min-height: auto` 会被内容撑高，内层 `h-full overflow-y-auto` 滚动容器的高度跟着内容走（scrollHeight == clientHeight），永远不产生内部滚动；超出视口的部分被根容器 `overflow-hidden` 裁掉。
+
+**修复**：外层容器加 `min-h-0 overflow-hidden`（`src/components/PullToRefresh.jsx`）。
+
+**经验**：凡是「flex 纵向布局 + 内部滚动」的组件，滚动的那个容器（或其包裹层）必须加 `min-h-0`，否则高度链必断。同页面的 note/kanban 视图用 `flex-1 overflow-hidden` 是正确写法，可对照。
