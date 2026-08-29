@@ -63,7 +63,7 @@ const PullToRefresh = ({ onRefresh, children, className = '', threshold = 60 }) 
   };
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative ${className} min-h-0 overflow-hidden`}>
       {/* 下拉刷新指示器 */}
       <div
         className="absolute left-0 right-0 z-10 flex items-center justify-center transition-all duration-200 pointer-events-none"
