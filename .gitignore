@@ -24,6 +24,9 @@ server/__test__/
 JustForMe/
 CLAUDE.md
 
+# Trae 本地 skill（含运维 API Key，严禁入库）
+.trae/
+
 # 部署执行记录（本地生成，不入库）
 deploy/once/.done
 deploy/.applied_migrations
