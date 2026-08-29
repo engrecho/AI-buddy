@@ -307,8 +307,9 @@ CRUD 行为与 Supabase PostgREST 类似（实际上是为了兼容历史 import
 | GET | `/api/v1/task-groups` | 任务分组 |
 | GET / POST | `/api/v1/memos` | 备忘列表 / 创建 |
 | GET | `/api/v1/memos/:id` | 备忘详情 |
-| GET / POST | `/api/v1/reading` | 阅读列表 / 创建 |
+| GET / POST | `/api/v1/reading` | 阅读列表 / 创建（POST 支持 `category`、`tags`——标签名数组或逗号分隔字符串，服务端自动解析/创建 task_tags 转 ID 存储；GET 支持 `category`、`tag`/`tags` 过滤） |
 | GET | `/api/v1/reading/:id` | 阅读详情 |
+| PATCH | `/api/v1/reading/:id` | 更新阅读项（含 `category`/`tags`，同样支持标签名自动解析） |
 | GET / POST | `/api/v1/quick-notes` | 随记列表 / 创建 |
 | GET | `/api/v1/quick-notes/:id` | 随记详情 |
 

@@ -339,10 +339,10 @@ buddy-skill **已内置**社媒内容解析（抖音 / B 站 / 小红书 / 公�
 | `/memos` | GET | 备忘列表（支持 `q`、`memo_type`） |
 | `/memos` | POST | 创建备忘 |
 | `/memos/:id` | GET | 备忘详情 |
-| `/reading` | GET | 阅读收藏列表（支持 `q`、`is_read`、`is_starred`、`platform` 过滤） |
-| `/reading` | POST | 添加阅读收藏（支持 `url` / `title` / `summary` / `platform` / `cover_url` / `is_offline`；`is_offline=true` 时服务端后台自动离线下载，`offline_path` 由服务端自动填写） |
+| `/reading` | GET | 阅读收藏列表（支持 `q`、`is_read`、`is_starred`、`platform`、`category` 过滤；`tag`/`tags` 按标签名或 ID 过滤，多值逗号分隔，命中任一即返回） |
+| `/reading` | POST | 添加阅读收藏（支持 `url` / `title` / `summary` / `platform` / `cover_url` / `category` / `tags` / `is_offline`；`tags` 可传标签名数组或逗号分隔字符串，服务端自动解析/创建 task_tags 并转成 ID 数组存储，网页端标签正常显示；`is_offline=true` 时服务端后台自动离线下载，`offline_path` 由服务端自动填写） |
 | `/reading/:id` | GET | 阅读详情 |
-| `/reading/:id` | PATCH | 更新阅读项（支持 `title`/`summary`/`tags`/`is_read`/`is_starred`/`is_offline` 等；`is_offline=true` 触发后台下载，`is_offline=false` 删除离线文件，不传 `is_offline` 则不修改离线状态） |
+| `/reading/:id` | PATCH | 更新阅读项（支持 `title`/`summary`/`category`/`tags`/`is_read`/`is_starred`/`is_offline` 等；`tags` 同样支持标签名数组或逗号分隔字符串，自动解析/创建；`is_offline=true` 触发后台下载，`is_offline=false` 删除离线文件，不传 `is_offline` 则不修改离线状态） |
 | `/quick-notes` | GET | 随记列表 |
 | `/quick-notes` | POST | 创建随记 |
 | `/quick-notes/:id` | GET | 随记详情 |

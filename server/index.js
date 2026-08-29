@@ -2478,6 +2478,17 @@ app.post('/api/v1/tasks/organize', apiKeyAuth, async (req, res) => {
 for (const table of ['memos', 'reading_items', 'quick_notes']) {
   app.get(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
     const filters = parseApiFilters(req.query, table);
+    // 标签过滤：tag/tags=标签名（或 ID），匹配 reading_items.tags JSON 数组
+    const tagQ = req.query.tag ?? req.query.tags;
+    if (tagQ != null && String(tagQ).trim() !== '' && JSON_COLUMNS[table]?.includes('tags')) {
+      const tagIds = await resolveReadingTags(req.user.id, tagQ);
+      if (tagIds.length > 0) {
+        filters.push({ type: 'json_contains', column: 'tags', value: tagIds });
+      } else {
+        // 没有匹配的标签 → 结果为空
+        return res.json({ data: [], error: null });
+      }
+    }
     const { sql, params } = buildSelectSql(table, req.user.id, filters, {
       order: req.query.order,
       limit: req.query.limit,
@@ -2558,6 +2569,14 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
             }
           }
         }
+
+        // 4) tags/category：接口可直接传标签名（数组或逗号分隔字符串），自动解析/创建 task_tags 并转成 ID 数组
+        if (row.tags != null && (Array.isArray(row.tags) || typeof row.tags === 'string')) {
+          row.tags = await resolveReadingTags(req.user.id, row.tags);
+        }
+        if (typeof row.category === 'string') {
+          row.category = row.category.trim();
+        }
       }
 
       // reading_items: is_offline=true 时先置 false，返回后后台异步下载再更新
@@ -2623,6 +2642,16 @@ app.patch('/api/v1/reading/:id', apiKeyAuth, async (req, res) => {
     if (k === 'is_offline') {
       if (wantOfflineTrue) { patch.is_offline = false; patch.offline_path = null; }
       else if (wantOfflineFalse) { patch.is_offline = false; patch.offline_path = null; }
+      continue;
+    }
+    // tags 支持标签名（数组或逗号分隔字符串）：自动解析/创建 task_tags 后转成 ID 数组
+    if (k === 'tags' && (Array.isArray(v) || typeof v === 'string')) {
+      const tagIds = await resolveReadingTags(req.user.id, v);
+      patch.tags = tagIds;
+      continue;
+    }
+    if (k === 'category' && typeof v === 'string') {
+      patch.category = v.trim();
       continue;
     }
     if (ALLOWED_FIELDS.includes(k)) patch[k] = v;
@@ -2795,7 +2824,7 @@ function parseApiFilters(query, table) {
     } else if (key === 'q' && typeof query[key] === 'string') {
       // 简单模糊查询（title 包含关键字）
       filters.push({ type: 'like', column: 'title', value: `%${query[key]}%` });
-    } else if (key === 'status' || key === 'priority' || key === 'is_project' || key === 'is_read' || key === 'is_starred') {
+    } else if (key === 'status' || key === 'priority' || key === 'is_project' || key === 'is_read' || key === 'is_starred' || key === 'category' || key === 'platform') {
       // 常用字段直接作为过滤
       const value = query[key];
       if (Array.isArray(value)) {
@@ -2806,6 +2835,59 @@ function parseApiFilters(query, table) {
     }
   }
   return filters;
+}
+
+// ── 阅读标签解析 ──────────────────────────────────────────────
+// 接口调用方传的 tags 是"标签名"（如 ["抖音","视频"]），而 reading_items.tags
+// 存的是 task_tags 表的 ID 数组（网页端渲染依赖 tagMap[tid]）。
+// 这里把标签名解析成 ID：已存在则复用，不存在则自动创建（与网页端一致的 10 位随机 ID）。
+const READING_TAG_COLORS = ['#6b7280', '#3b82f6', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#14b8a6', '#0ea5e9', '#f97316'];
+
+async function resolveReadingTags(userId, tags) {
+  const list = Array.isArray(tags)
+    ? tags
+    : String(tags).split(',').map((s) => s.trim()).filter(Boolean);
+  const ids = [];
+  for (const t of list) {
+    if (t === null || t === undefined) continue;
+    const name = String(t).trim();
+    if (!name) continue;
+    // 纯数字且是该用户已有标签 ID → 直接使用
+    if (/^\d+$/.test(name)) {
+      const [exRows] = await pool.query('SELECT id FROM task_tags WHERE user_id = ? AND id = ?', [userId, name]);
+      if (exRows.length > 0) {
+        ids.push(Number(name));
+        continue;
+      }
+    }
+    // 按名称查找（大小写不敏感）
+    const [rows] = await pool.query(
+      'SELECT id FROM task_tags WHERE user_id = ? AND LOWER(name) = LOWER(?) LIMIT 1',
+      [userId, name]
+    );
+    if (rows.length > 0) {
+      ids.push(Number(rows[0].id));
+      continue;
+    }
+    // 不存在 → 自动创建
+    const newId = Math.floor(1000000000 + Math.random() * 9000000000);
+    const color = READING_TAG_COLORS[Math.floor(Math.random() * READING_TAG_COLORS.length)];
+    try {
+      await pool.query(
+        'INSERT INTO task_tags (id, user_id, name, color) VALUES (?, ?, ?, ?)',
+        [newId, userId, name, color]
+      );
+      ids.push(newId);
+    } catch (e) {
+      // 并发撞名 → 再查一次拿已有 ID
+      const [again] = await pool.query(
+        'SELECT id FROM task_tags WHERE user_id = ? AND LOWER(name) = LOWER(?) LIMIT 1',
+        [userId, name]
+      );
+      if (again.length > 0) ids.push(Number(again[0].id));
+    }
+  }
+  return ids;
 }
 
 function buildSelectSql(table, userId, filters, { order, limit } = {}) {
@@ -2826,6 +2908,11 @@ function buildSelectSql(table, userId, filters, { order, limit } = {}) {
     } else if (f.type === 'like') {
       conditions.push(`${col} LIKE ?`);
       params.push(f.value);
+    } else if (f.type === 'json_contains' && Array.isArray(f.value) && f.value.length) {
+      // JSON 数组列包含任一值（如按标签 ID 过滤 reading_items.tags）
+      const parts = f.value.map(() => `JSON_CONTAINS(${col}, ?)`);
+      conditions.push(`(${parts.join(' OR ')})`);
+      params.push(...f.value.map((v) => JSON.stringify(v)));
     }
   }
 

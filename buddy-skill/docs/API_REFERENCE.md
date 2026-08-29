@@ -264,6 +264,8 @@ X-API-Key: buddy_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 | `is_read` | boolean | 是否已读：`true` / `false` |
 | `is_starred` | boolean | 是否加星：`true` / `false` |
 | `platform` | string | 平台过滤（如 `douyin`、`bilibili`） |
+| `category` | string | 分类过滤（如 `work`、`article`） |
+| `tag` / `tags` | string | 标签过滤：标签名或标签 ID，多个用逗号分隔，命中任一即返回（按标签名过滤时服务端自动解析为标签 ID） |
 | `limit` | number | 返回数量（默认 20） |
 | `order` | string | 排序 |
 
@@ -291,8 +293,8 @@ X-API-Key: buddy_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   "summary": "摘要",                  // 可选
   "platform": "douyin",              // 可选（douyin/bilibili/xiaohongshu/wechat/youtube/tiktok/weibo/kuaishou/xigua/zhihu/web）
   "cover_url": "https://...",        // 可选，封面图 URL
-  "category": "稍后读",               // 可选
-  "tags": ["抖音", "视频", "AI"],    // 可选
+  "category": "稍后读",               // 可选，分类（字符串，如 work/article/video）
+  "tags": ["抖音", "视频", "AI"],    // 可选，标签名数组（或逗号分隔字符串 "抖音,视频,AI"）；服务端自动解析：已存在的标签复用 ID，不存在的自动创建，最终存为 task_tags 的 ID 数组，网页端正常显示
   "is_offline": false,               // 可选：true=服务端后台离线下载
   "parsed_data": { ... },            // 可选：传入解析结果，跳过服务端解析（避免 IP 限线）
   "auto_parse": true,                // 可选：服务端自动解析补全字段
@@ -350,6 +352,8 @@ node index.js add-reading ... --is-offline true
   "tags": ["新标签"]
 }
 ```
+
+> `tags` 与 POST 一致：可传标签名数组或逗号分隔字符串，服务端自动解析/创建 task_tags 后存为 ID 数组（**整体替换**原标签）。
 
 **CLI 对应**：`node index.js update-reading <id> --is-offline true`
 

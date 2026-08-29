@@ -3,7 +3,8 @@ import { RefreshCw } from 'lucide-react';
 
 /**
  * PullToRefresh - 下拉刷新容器
- * 在移动端支持原生触感下拉刷新，PC 端也可用鼠标拖拽触发
+ * 仅移动端触屏有效：手指在列表顶部下拉触发刷新。
+ * PC 端不做鼠标拖拽触发（滚轮/刷新按钮即可），避免点击、框选文字时内容被顶下去导致滚动异常。
  */
 const PullToRefresh = ({ onRefresh, children, className = '', threshold = 60 }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -44,42 +45,16 @@ const PullToRefresh = ({ onRefresh, children, className = '', threshold = 60 }) 
       // 阻尼效果
       pullAccRef.current = Math.min(dy * 0.4, 100);
       setPullDistance(pullAccRef.current);
+    } else if (pullAccRef.current !== 0) {
+      // 手指回弹/上滑时同步归零，避免指示器卡住
+      pullAccRef.current = 0;
+      setPullDistance(0);
     }
   };
 
   const handleTouchEnd = () => {
     if (!isPulling.current) return;
     isPulling.current = false;
-    if (pullAccRef.current >= threshold) {
-      handleRefresh();
-    } else {
-      reset();
-    }
-  };
-
-  // Mouse drag for PC
-  const mouseStartY = useRef(0);
-  const mousePulling = useRef(false);
-
-  const handleMouseDown = (e) => {
-    if (containerRef.current && containerRef.current.scrollTop <= 0) {
-      mouseStartY.current = e.clientY;
-      mousePulling.current = true;
-    }
-  };
-
-  const handleMouseMove = (e) => {
-    if (!mousePulling.current || refreshing) return;
-    const dy = e.clientY - mouseStartY.current;
-    if (dy > 10) {
-      pullAccRef.current = Math.min(dy * 0.4, 100);
-      setPullDistance(pullAccRef.current);
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (!mousePulling.current) return;
-    mousePulling.current = false;
     if (pullAccRef.current >= threshold) {
       handleRefresh();
     } else {
@@ -111,15 +86,11 @@ const PullToRefresh = ({ onRefresh, children, className = '', threshold = 60 }) 
         className="h-full overflow-y-auto"
         style={{
           transform: `translateY(${refreshing ? 40 : pullDistance}px)`,
-          transition: isPulling.current || mousePulling.current || refreshing ? 'none' : 'transform 0.25s ease',
+          transition: isPulling.current || refreshing ? 'none' : 'transform 0.25s ease',
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
       >
         {children}
       </div>
