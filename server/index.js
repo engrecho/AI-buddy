@@ -2544,7 +2544,6 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
 
   app.post(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
     try {
-      require('fs').appendFileSync('/tmp/debug-probe.log', `ENTER ${table}\n`);
       const body = req.body || {};
       let row = { ...body, user_id: req.user.id };
 
@@ -2621,9 +2620,6 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
         triggerOfflineDownloadAsync(req.user.id, insertId, row.url, pd && typeof pd === 'object' ? pd : null);
       }
       // reading_items: 后台异步自动解析
-      try {
-        require('fs').appendFileSync('/tmp/debug-probe.log', `post-reading: table=${table} needAsyncParse=${needAsyncParse} wantAutoParse=${wantAutoParse} asyncParse=${asyncParse} hasParsedData=${hasParsedData} url=${row.url} insertId=${insertId}\n`);
-      } catch (e) {}
       if (table === 'reading_items' && needAsyncParse) {
         triggerAutoParseAsync(req.user.id, insertId, row.url);
       }
