@@ -171,6 +171,7 @@ AI-buddy/
 - [x] **头像上传**：取代 URL 填写，直接上传图片（jpg/png/webp，≤2MB）
 - [x] **API Key 反查明文**：新建 Key 加密存储，可在列表点「眼睛」再次查看明文（旧格式 Key 标记为 legacy，需撤销重建）
 - [x] **阅读页加载优化**：复合索引 + 列投影 + 加载骨架屏 + 乐观更新（消除操作后全量刷新闪烁）
+- [x] **iPhone 快捷指令收藏**：`GET /api/v1/reading/meta` 获取分类/标签列表供选择，`POST /api/v1/reading` 异步收藏（`auto_parse` + `async_parse` 立即返回、后台补全标题）
 - [ ] 微信扫码登录
 - [ ] 多端数据同步（小程序）
 - [ ] 数据导入导出
@@ -178,6 +179,13 @@ AI-buddy/
 - [ ] AI 助手（任务建议、自动归类）
 
 ## 更新日志
+
+### v1.7.1 (2026-08-30)
+
+**iPhone 快捷指令收藏支持**：
+- 新增 `GET /api/v1/reading/meta`：返回账号下所有阅读分类与标签，供快捷指令在收藏前弹窗选择
+- `POST /api/v1/reading` 支持 `auto_parse` + `async_parse` 组合：立即返回、后台异步补全标题/封面/平台
+- 修复：异步解析因块级作用域 `ReferenceError` 从未触发的 bug（此前 `needAsyncParse` 在 if 块内声明、块外引用，导致 `ERR_HTTP_HEADERS_SENT`）
 
 ### v1.7.0 (2026-07-09)
 
