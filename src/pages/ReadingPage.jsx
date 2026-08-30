@@ -153,6 +153,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTag, setActiveTag] = useState("all");
+  const [activeCategory, setActiveCategory] = useState("all");
   const [readFilter, setReadFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
 
@@ -160,7 +161,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [form, setForm] = useState({
-    url: "", title: "", summary: "", cover_url: "", platform: "web",
+    url: "", title: "", summary: "", cover_url: "", platform: "web", category: "",
     tags: [], is_read: false, is_starred: false, is_offline: false,
   });
   const [fetching, setFetching] = useState(false);
@@ -299,7 +300,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
     e.preventDefault();
     setDownloading(true);
     try {
-      let insertData = { ...form };
+      let insertData = { ...form, category: (form.category || "").trim() };
       // url 优先用解析后的 url，其次用输入的 shareInput
       if (!insertData.url && shareInput) insertData.url = shareInput;
 
@@ -352,7 +353,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
     setExtractError("");
     setShareInput("");
     setForm({
-      url: "", title: "", summary: "", cover_url: "", platform: "web",
+      url: "", title: "", summary: "", cover_url: "", platform: "web", category: "",
       tags: [], is_read: false, is_starred: false, is_offline: false,
     });
   };
@@ -419,7 +420,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
       summary: item.summary || "",
       cover_url: item.cover_url || "",
       platform: item.platform || "web",
-      category: item.category || "work",
+      category: item.category || "",
       is_read: !!item.is_read,
       is_starred: !!item.is_starred,
       is_offline: !!item.is_offline,
@@ -430,14 +431,15 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   const handleSaveEdit = async () => {
     if (!editingItem) return;
     setSavingEdit(true);
+    const payload = { ...editForm, category: (editForm.category || "").trim() };
     // 乐观更新本地
-    setItems((prev) => prev.map((it) => it.id === editingItem.id ? { ...it, ...editForm } : it));
+    setItems((prev) => prev.map((it) => it.id === editingItem.id ? { ...it, ...payload } : it));
     const snapshotItem = editingItem;
     setEditingItem(null);
     try {
       const { error } = await supabase
         .from("reading_items")
-        .update(editForm)
+        .update(payload)
         .eq("id", snapshotItem.id);
       if (error) throw error;
     } catch (e) {
@@ -548,9 +550,15 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   };
 
   // ── 过滤逻辑 ──────────────────────────────────────────────────────
+  // 从现有条目聚合出分类列表（category 为自由字符串，可能来自 API/编辑表单）
+  const categories = Array.from(
+    new Set(items.map((i) => (i.category || "").trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "zh"));
+
   const filteredItems = items.filter((item) => {
     if (activeTag === "starred") { if (!item.is_starred) return false; }
     else if (activeTag !== "all") { if (!(item.tags || []).includes(activeTag)) return false; }
+    if (activeCategory !== "all" && (item.category || "").trim() !== activeCategory) return false;
     if (readFilter === "unread") return !item.is_read;
     if (readFilter === "read") return item.is_read;
     if (platformFilter !== "all" && (item.platform || "web") !== platformFilter) return false;
@@ -560,16 +568,17 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   const tagMap = Object.fromEntries(tags.map((t) => [t.id, t]));
 
   // ── 侧边栏内容（PC 和移动端抽屉共用） ────────────────────────────
+  const CATEGORY_COLORS = ['#6366f1', '#0891b2', '#7c3aed', '#db2777', '#ea580c', '#16a34a', '#0ea5e9', '#9333ea'];
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       <div className="px-3 pt-4 pb-2 flex items-center justify-between flex-shrink-0">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">分类</span>
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">快捷视图</span>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         <SideItem
-          active={activeTag === "all"}
-          onClick={() => { setActiveTag("all"); setIsSidebarOpen(false); }}
+          active={activeTag === "all" && activeCategory === "all"}
+          onClick={() => { setActiveTag("all"); setActiveCategory("all"); setIsSidebarOpen(false); }}
           label="全部"
           count={items.length}
           icon={<BookOpen className="h-3.5 w-3.5" />}
@@ -584,7 +593,34 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
           color="#f59e0b"
         />
 
-        {tags.length > 0 && <div className="mx-3 my-2 border-t border-gray-100" />}
+        {categories.length > 0 && (
+          <>
+            <div className="mx-3 my-2 border-t border-gray-100" />
+            <div className="px-3 pt-1 pb-2">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">分类</span>
+            </div>
+            {categories.map((cat, idx) => (
+              <SideItem
+                key={cat}
+                active={activeCategory === cat}
+                onClick={() => { setActiveCategory(activeCategory === cat ? "all" : cat); setIsSidebarOpen(false); }}
+                label={cat}
+                count={items.filter((i) => (i.category || "").trim() === cat).length}
+                icon={<FolderOpen className="h-3.5 w-3.5" />}
+                color={CATEGORY_COLORS[idx % CATEGORY_COLORS.length]}
+              />
+            ))}
+          </>
+        )}
+
+        {tags.length > 0 && (
+          <>
+            <div className="mx-3 my-2 border-t border-gray-100" />
+            <div className="px-3 pt-1 pb-2">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">标签</span>
+            </div>
+          </>
+        )}
 
         {tags.map((tag) => (
           <SideItem
@@ -602,6 +638,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   );
 
   const activeTagLabel =
+    activeCategory !== "all" ? activeCategory :
     activeTag === "all" ? "全部" :
     activeTag === "starred" ? "星标" :
     (tags.find((t) => t.id === activeTag)?.name || "全部");
@@ -815,7 +852,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
                       className="resize-none"
                     />
                   </div>
-                  {/* 平台 + 离线到本地 */}
+                  {/* 平台 + 分类 + 离线到本地 */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm font-medium mb-1.5 block">平台</label>
@@ -828,6 +865,20 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
                           <option key={k} value={k}>{v.label}</option>
                         ))}
                       </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1.5 block">分类</label>
+                      <Input
+                        value={form.category || ""}
+                        onChange={(e) => setForm({ ...form, category: e.target.value })}
+                        placeholder="如 article / video / work"
+                        list="reading-category-options"
+                      />
+                      <datalist id="reading-category-options">
+                        {categories.map((c) => (
+                          <option key={c} value={c} />
+                        ))}
+                      </datalist>
                     </div>
                     <div className="flex items-end">
                       <label className={`flex items-start gap-2 px-3 py-2 rounded-md border w-full cursor-pointer transition-colors ${
@@ -1050,6 +1101,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
                   value={editForm.category}
                   onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                   placeholder="work / article / video ..."
+                  list="reading-category-options"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1467,6 +1519,14 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
               已离线
             </span>
           )}
+          {item.category && item.category.trim() && (
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap flex-shrink-0 bg-indigo-50 text-indigo-600 border border-indigo-100"
+              title={`分类：${item.category.trim()}`}
+            >
+              {item.category.trim()}
+            </span>
+          )}
           {(item.tags || []).slice(0, 3).map((tid) => {
             const tag = tagMap[tid];
             if (!tag) return null;
@@ -1480,9 +1540,6 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
               </span>
             );
           })}
-          {(!item.tags || item.tags.length === 0) && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-400 flex-shrink-0">未分类</span>
-          )}
 
           {/* 推后:日期 + 操作 */}
           <div className="flex-1" />
