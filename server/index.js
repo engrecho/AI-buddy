@@ -2620,7 +2620,9 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
         triggerOfflineDownloadAsync(req.user.id, insertId, row.url, pd && typeof pd === 'object' ? pd : null);
       }
       // reading_items: 后台异步自动解析
-      console.log('[DEBUG] post-reading table=', table, 'needAsyncParse=', needAsyncParse, 'wantAutoParse=', wantAutoParse, 'asyncParse=', asyncParse, 'hasParsedData=', hasParsedData, 'url=', row.url);
+      try {
+        require('fs').appendFileSync('/tmp/debug-probe.log', `post-reading: table=${table} needAsyncParse=${needAsyncParse} wantAutoParse=${wantAutoParse} asyncParse=${asyncParse} hasParsedData=${hasParsedData} url=${row.url} insertId=${insertId}\n`);
+      } catch (e) {}
       if (table === 'reading_items' && needAsyncParse) {
         triggerAutoParseAsync(req.user.id, insertId, row.url);
       }
