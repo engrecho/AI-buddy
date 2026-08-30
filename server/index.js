@@ -2474,6 +2474,31 @@ app.post('/api/v1/tasks/organize', apiKeyAuth, async (req, res) => {
   }
 });
 
+// v1 GET /reading/meta - 聚合分类与标签（供 iPhone 快捷方式等 API Key 调用方选择用）
+// 注意：必须注册在 /reading/:id 之前，否则 meta 会被当成 :id 拦截
+// tags 返回对象数组（含 id/name/color）；快捷指令里 name 可直接用于提交
+app.get('/api/v1/reading/meta', apiKeyAuth, async (req, res) => {
+  try {
+    const [catRows] = await pool.query(
+      'SELECT DISTINCT category FROM reading_items WHERE user_id = ? AND deleted_at IS NULL AND category IS NOT NULL AND TRIM(category) <> \'\' ORDER BY category',
+      [req.user.id]
+    );
+    const [tagRows] = await pool.query(
+      'SELECT id, name, color FROM task_tags WHERE user_id = ? ORDER BY name',
+      [req.user.id]
+    );
+    res.json({
+      data: {
+        categories: catRows.map(r => r.category.trim()),
+        tags: tagRows.map(r => ({ id: Number(r.id), name: r.name, color: r.color })),
+      },
+      error: null,
+    });
+  } catch (err) {
+    res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // 通用列表接口（备忘/阅读/随记）
 for (const table of ['memos', 'reading_items', 'quick_notes']) {
   app.get(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
