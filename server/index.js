@@ -2544,6 +2544,7 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
 
   app.post(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
     try {
+      require('fs').appendFileSync('/tmp/debug-probe.log', `ENTER ${table}\n`);
       const body = req.body || {};
       let row = { ...body, user_id: req.user.id };
 
