@@ -19,6 +19,7 @@ module.exports = {
       APIKEY_ENCRYPTION_KEY: 'ai-buddy-apikey-prod-please-change',
     },
     instances: 1,
+    exec_mode: 'fork',
     autorestart: true,
     watch: false,
     max_memory_restart: '300M',
