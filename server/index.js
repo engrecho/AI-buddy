@@ -2543,6 +2543,7 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
   });
 
   app.post(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
+    let needAsyncParse = false; // 声明在 try 外层作用域，避免块级作用域引用报错
     try {
       const body = req.body || {};
       let row = { ...body, user_id: req.user.id };
@@ -2575,7 +2576,6 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
         const wantAutoParse = body.auto_parse === true || body.autoParse === true || body.auto_parse === 'true';
         const asyncParse = body.async_parse === true || body.asyncParse === true || body.async_parse === 'true';
         const hasParsedData = !!(parsedData && typeof parsedData === 'object');
-        let needAsyncParse = false;
         if (wantAutoParse && row.url && !hasParsedData) {
           if (asyncParse) {
             needAsyncParse = true;
@@ -2624,7 +2624,10 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
         triggerAutoParseAsync(req.user.id, insertId, row.url);
       }
     } catch (err) {
-      res.json({ data: null, error: { message: err.message } });
+      console.error(`[${table}] POST 处理异常:`, err.message);
+      if (!res.headersSent) {
+        res.json({ data: null, error: { message: err.message } });
+      }
     }
   });
 }
