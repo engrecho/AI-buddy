@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera, Check, Shield } from 'lucide-react';
+import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera, Check, Shield, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -213,7 +213,7 @@ function SingleImageUpload({ value, onChange, label = '图片' }) {
 // ════════════════════════════════════════════════════════════════════
 // 多图上传组件（就诊附件，支持备注）— 移动端优化
 // ════════════════════════════════════════════════════════════════════
-function MultiImageUpload({ items = [], onChange }) {
+function MultiImageUpload({ items = [], onChange, onPreviewImage }) {
   const [uploading, setUploading] = useState(false);
   const [editingIdx, setEditingIdx] = useState(null);
   const [draftNote, setDraftNote] = useState('');
@@ -272,7 +272,13 @@ function MultiImageUpload({ items = [], onChange }) {
         <div className="space-y-2">
           {items.map((item, idx) => (
             <div key={idx} className="flex gap-2 items-start p-2 rounded-lg bg-gray-50">
-              <img src={toThumbUrl(item.url, 200)} alt={`附件${idx + 1}`} loading="lazy" className="w-12 h-12 sm:w-14 sm:h-14 rounded-md object-cover flex-shrink-0" />
+              <img
+                src={toThumbUrl(item.url, 200)}
+                alt={`附件${idx + 1}`}
+                loading="lazy"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-md object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => onPreviewImage?.(item.url)}
+              />
               <div className="flex-1 min-w-0">
                 {editingIdx === idx ? (
                   <div className="flex items-center gap-1">
@@ -319,13 +325,31 @@ function MultiImageUpload({ items = [], onChange }) {
 
 // ════════════════════════════════════════════════════════════════════
 // 图片预览 Modal — 移动端支持双指缩放
+// pointer-events-auto：Radix Dialog 打开时会将 body 置为 pointer-events:none，
+// 预览层必须显式恢复事件响应，否则视觉上盖住弹窗却点不了关闭按钮
 // ════════════════════════════════════════════════════════════════════
-function ImagePreviewModal({ src, onClose }) {
+function ImagePreviewModal({ src, onClose, onRotated }) {
+  const [rotating, setRotating] = useState(false);
   if (!src) return null;
+
+  const rotate = async (e) => {
+    e.stopPropagation();
+    if (rotating) return;
+    // 仅健康图片支持旋转（其余模块的图没有 rotate 接口）
+    if (!src.startsWith('/api/health/images/')) return;
+    setRotating(true);
+    const r = await api('/api/health/rotate', { method: 'POST', body: { url: src } });
+    setRotating(false);
+    if (r.error) { toast.error(r.error.message); return; }
+    toast.success('已旋转 90°');
+    onRotated?.(r.data?.url);
+  };
+
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 touch-manipulation"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 touch-manipulation pointer-events-auto"
       onClick={onClose}
+      onPointerDown={e => e.stopPropagation()}
     >
       <img
         src={src}
@@ -340,6 +364,17 @@ function ImagePreviewModal({ src, onClose }) {
       >
         <X className="w-5 h-5" />
       </button>
+      {src.startsWith('/api/health/images/') && (
+        <button
+          className="absolute top-4 left-4 h-10 px-4 bg-white/20 text-white text-sm rounded-full flex items-center gap-1.5 hover:bg-white/30 transition-colors active:scale-95 disabled:opacity-50"
+          onClick={rotate}
+          disabled={rotating}
+          aria-label="旋转图片"
+        >
+          <RotateCw className="w-4 h-4" />
+          {rotating ? '旋转中...' : '旋转'}
+        </button>
+      )}
     </div>
   );
 }
@@ -748,6 +783,7 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
             <MultiImageUpload
               items={form.attachment_urls || []}
               onChange={items => set('attachment_urls', items)}
+              onPreviewImage={onPreviewImage}
             />
           </div>
 
@@ -1703,7 +1739,26 @@ const HealthPage = () => {
       </AlertDialog>
 
       {/* 图片预览 Modal */}
-      <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />
+      <ImagePreviewModal
+        src={previewImage}
+        onClose={() => setPreviewImage(null)}
+        onRotated={(newUrl) => {
+          if (!newUrl) return;
+          const oldUrl = previewImage;
+          setPreviewImage(newUrl);
+          // 同步正在编辑的弹窗：服务端已改 DB 且旧文件已删除，弹窗里的旧 URL 必须替换掉
+          setVisitDialog(d => d.initial ? {
+            ...d,
+            initial: {
+              ...d.initial,
+              attachment_urls: (d.initial.attachment_urls || []).map(a => a.url === oldUrl ? { ...a, url: newUrl } : a),
+              medications: (d.initial.medications || []).map(m => m.photo_url === oldUrl ? { ...m, photo_url: newUrl } : m),
+            },
+          } : d);
+          setMedDialog(d => d.initial?.photo_url === oldUrl ? { ...d, initial: { ...d.initial, photo_url: newUrl } } : d);
+          if (selectedProfile) loadDetail(selectedProfile.id);
+        }}
+      />
     </div>
   );
 };

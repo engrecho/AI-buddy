@@ -85,8 +85,9 @@ app.get('/api/health/thumb/:filename', async (req, res) => {
       res.set('Cache-Control', 'public, max-age=2592000');
       return res.sendFile(cachePath);
     }
-    // 实时压缩
+    // 实时压缩（rotate() 按 EXIF 方向自动矫正，解决 iPhone 竖拍照片旋转 90° 问题）
     await sharp(srcPath)
+      .rotate()
       .resize(width, null, { withoutEnlargement: true })
       .webp({ quality: 75 })
       .toFile(cachePath);
@@ -1023,9 +1024,11 @@ app.post('/api/health/upload', authMiddleware, (req, res, next) => {
   try {
     if (!req.file) return res.json({ data: null, error: { message: '未收到文件' } });
     // 用 sharp 压缩原图（max 1200px, webp quality 80），替换原文件
+    // rotate() 按 EXIF 方向自动矫正后再压缩，否则 iPhone 竖拍照片会旋转 90°
     const originalPath = req.file.path;
     const compressedPath = originalPath.replace(/\.(jpe?g|png|webp|gif)$/i, '.webp');
     await sharp(originalPath)
+      .rotate()
       .resize(1200, null, { withoutEnlargement: true })
       .webp({ quality: 80 })
       .toFile(compressedPath);
@@ -1034,6 +1037,49 @@ app.post('/api/health/upload', authMiddleware, (req, res, next) => {
     const filename = path.basename(compressedPath);
     const url = `/api/health/images/${filename}`;
     return res.json({ data: { url, filename }, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 旋转健康图片 90°（修正历史上传方向错误的照片）
+// 旋转后写入新文件名（旧缓存 URL 全部失效），同步更新数据库引用，删除旧文件与缩略图缓存
+app.post('/api/health/rotate', authMiddleware, async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    const m = String(url || '').match(/\/api\/health\/images\/(.+)$/);
+    if (!m) return res.json({ data: null, error: { message: '无效的图片地址' } });
+    const filename = path.basename(m[1]);
+    if (filename.includes('..') || filename.includes('/')) {
+      return res.json({ data: null, error: { message: '无效的文件名' } });
+    }
+    const srcPath = path.join(HEALTH_IMG_DIR, filename);
+    if (!fs.existsSync(srcPath)) {
+      return res.json({ data: null, error: { message: '文件不存在' } });
+    }
+    const base = filename.replace(/\.[^.]+$/, '');
+    const newFilename = `${base}_r${Date.now()}.webp`;
+    const newPath = path.join(HEALTH_IMG_DIR, newFilename);
+    await sharp(srcPath).rotate(90).toFile(newPath);
+    fs.unlinkSync(srcPath);
+    // 清理旧文件的缩略图缓存（缓存名格式：{width}_{base}.webp）
+    if (fs.existsSync(HEALTH_IMG_CACHE_DIR)) {
+      for (const f of fs.readdirSync(HEALTH_IMG_CACHE_DIR)) {
+        if (f.includes(base)) fs.unlinkSync(path.join(HEALTH_IMG_CACHE_DIR, f));
+      }
+    }
+    const oldUrl = `/api/health/images/${filename}`;
+    const newUrl = `/api/health/images/${newFilename}`;
+    // 同步数据库引用：药物照片 + 就诊附件（JSON 列做字符串替换）
+    await pool.query(
+      'UPDATE health_medications SET photo_url = ? WHERE user_id = ? AND photo_url = ?',
+      [newUrl, req.user.id, oldUrl]
+    );
+    await pool.query(
+      'UPDATE health_visits SET attachment_urls = REPLACE(CAST(attachment_urls AS CHAR), ?, ?) WHERE user_id = ? AND CAST(attachment_urls AS CHAR) LIKE ?',
+      [oldUrl, newUrl, req.user.id, `%${filename}%`]
+    );
+    return res.json({ data: { url: newUrl }, error: null });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }
