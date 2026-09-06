@@ -287,6 +287,8 @@ CREATE TABLE `health_profiles` (
     `id`          BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `user_id`     BIGINT NOT NULL,
     `patient_name` VARCHAR(100) NOT NULL,         -- 患者姓名（如：张三 / 父亲）
+    `id_card`     VARCHAR(32) NULL,                -- 身份证号（家庭成员管理用）
+    `relationship` VARCHAR(32) NULL,               -- 与本人关系：本人/妻子/丈夫/女儿/儿子/母亲/父亲/其他
     `gender`      ENUM('male','female') NULL,      -- 性别
     `birth_date`  DATE NULL,                       -- 出生日期（可空）
     `blood_type`  VARCHAR(10) NULL,                -- 血型
@@ -298,6 +300,7 @@ CREATE TABLE `health_profiles` (
 ```
 
 - 一个用户可有多个档案（自己、父母、子女）
+- `id_card` / `relationship` 于 2026-09 新增，用于「设置 → 家庭成员」管理与保险「被保人」关联
 - `birth_date` 后端返回 ISO 字符串（如 `2021-11-14T16:00:00.000Z`），前端用本地时区转换显示
 
 ---

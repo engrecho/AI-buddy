@@ -6,17 +6,19 @@ import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft, User as UserIcon, Lock, Key, Users, Tag, FolderOpen,
   Save, LogOut, Copy, Trash2, Plus, Eye, EyeOff, AlertTriangle,
-  CheckCircle2, Loader2, Camera, ChevronRight,
+  CheckCircle2, Loader2, Camera, ChevronRight, HeartPulse,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { MembersPanel, TagsPanel, GroupsPanel } from '@/components/ConfigSection';
+import { FamilyMembersPanel } from '@/components/FamilyMembersPanel';
 
 const SECTIONS = [
   { id: 'profile', label: '个人资料', icon: UserIcon },
   { id: 'password', label: '修改密码', icon: Lock },
   { id: 'api-key', label: 'API Key', icon: Key },
   { id: 'members', label: '人员', icon: Users },
+  { id: 'family', label: '家庭成员', icon: HeartPulse },
   { id: 'tags', label: '标签', icon: Tag },
   { id: 'groups', label: '分组', icon: FolderOpen },
 ];
@@ -104,6 +106,7 @@ export function SettingsCenter({ onBack, defaultSection = null }) {
     if (section === 'password') return <PasswordPanel />;
     if (section === 'api-key') return <ApiKeyPanel />;
     if (section === 'members') return <MembersPanel />;
+    if (section === 'family') return <FamilyMembersPanel />;
     if (section === 'tags') return <TagsPanel />;
     if (section === 'groups') return <GroupsPanel />;
     return null;
@@ -165,6 +168,7 @@ function MobileSectionContent({ section, user, login }) {
   if (section === 'password') return <PasswordPanel />;
   if (section === 'api-key') return <ApiKeyPanel />;
   if (section === 'members') return <MembersPanel />;
+  if (section === 'family') return <FamilyMembersPanel />;
   if (section === 'tags') return <TagsPanel />;
   if (section === 'groups') return <GroupsPanel />;
   return null;

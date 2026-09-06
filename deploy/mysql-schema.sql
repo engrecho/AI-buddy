@@ -340,6 +340,8 @@ CREATE TABLE IF NOT EXISTS `health_profiles` (
   `user_id` bigint(20) NOT NULL,
   `patient_name` varchar(100) NOT NULL,
   `patient_avatar_url` text DEFAULT NULL,
+  `id_card` varchar(32) DEFAULT NULL COMMENT '身份证号',
+  `relationship` varchar(32) DEFAULT NULL COMMENT '与本人关系',
   `gender` varchar(10) DEFAULT NULL,
   `birth_date` date DEFAULT NULL,
   `disease_name` varchar(200) NOT NULL DEFAULT '',
