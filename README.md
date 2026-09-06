@@ -187,6 +187,10 @@ AI-buddy/
 - `POST /api/v1/reading` 支持 `auto_parse` + `async_parse` 组合：立即返回、后台异步补全标题/封面/平台
 - 修复：异步解析因块级作用域 `ReferenceError` 从未触发的 bug（此前 `needAsyncParse` 在 if 块内声明、块外引用，导致 `ERR_HTTP_HEADERS_SENT`）
 - 修复：健康页就诊/药品图片预览被编辑弹窗遮挡（预览层级 `z-50` 与 Dialog 相同且 DOM 靠前导致被盖住，提升至 `z-[100]`）
+- 修复：弹窗内打开的图片预览无法关闭（Radix Dialog 打开时 body 被置 `pointer-events:none`，预览层显式加 `pointer-events-auto` 恢复交互）
+- 修复：编辑就诊记录弹窗内附件缩略图点击无反应（`MultiImageUpload` 补上点击预览透传）
+- 修复：iPhone 竖拍照片方向旋转 90°（sharp 上传压缩/缩略图均补 `.rotate()` 按 EXIF 自动矫正）
+- 新增：图片预览「旋转」按钮 + `POST /api/health/rotate` 接口——历史错误方向照片可手动纠正（旋转后重命名防旧缓存、同步更新药物照片与就诊附件 JSON 引用）
 
 ### v1.7.0 (2026-07-09)
 
