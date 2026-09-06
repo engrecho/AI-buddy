@@ -186,6 +186,7 @@ AI-buddy/
 - 新增 `GET /api/v1/reading/meta`：返回账号下所有阅读分类与标签，供快捷指令在收藏前弹窗选择
 - `POST /api/v1/reading` 支持 `auto_parse` + `async_parse` 组合：立即返回、后台异步补全标题/封面/平台
 - 修复：异步解析因块级作用域 `ReferenceError` 从未触发的 bug（此前 `needAsyncParse` 在 if 块内声明、块外引用，导致 `ERR_HTTP_HEADERS_SENT`）
+- 修复：健康页就诊/药品图片预览被编辑弹窗遮挡（预览层级 `z-50` 与 Dialog 相同且 DOM 靠前导致被盖住，提升至 `z-[100]`）
 
 ### v1.7.0 (2026-07-09)
 
