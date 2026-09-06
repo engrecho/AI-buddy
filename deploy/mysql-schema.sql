@@ -401,6 +401,17 @@ CREATE TABLE IF NOT EXISTS `health_medications` (
   KEY `idx_health_visits_user` (`user_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 药物 ↔ 就诊记录 多对多关联
+CREATE TABLE IF NOT EXISTS `visit_medications` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `visit_id` bigint(20) NOT NULL,
+  `medication_id` bigint(20) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_visit_med` (`visit_id`, `medication_id`),
+  KEY `idx_vm_medication` (`medication_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ══════════════════════════════════════════════════════════════
 -- 密码保险箱模块（AES-256-CBC 加密存储）
 -- ══════════════════════════════════════════════════════════════

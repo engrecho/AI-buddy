@@ -1719,19 +1719,35 @@ app.get('/api/health/profiles/:id/detail', authMiddleware, async (req, res) => {
       `SELECT * FROM health_medications WHERE profile_id = ? ORDER BY status DESC, created_at DESC`,
       [id]
     );
-    // 把药物按 visit_id 分组：visits[].medications，未关联就诊的归到顶层 medications
-    const visitIds = new Set(visits.map(v => v.id));
-    const visitsMedMap = {};
-    const topMeds = [];
+    // 药物与就诊是多对多（visit_medications 关联表）：
+    // 一个药物可关联多个就诊记录，未关联任何就诊的归到顶层 medications
+    const [links] = await pool.query(
+      `SELECT vm.visit_id, vm.medication_id FROM visit_medications vm
+       JOIN health_visits v ON v.id = vm.visit_id
+       WHERE v.profile_id = ?`,
+      [id]
+    );
+    const medVisitMap = {}; // medication_id -> [visit_id]
+    const visitsMedMap = {}; // visit_id -> [medication]
+    const medSet = new Set();
+    for (const l of links) {
+      (medVisitMap[l.medication_id] = medVisitMap[l.medication_id] || []).push(l.visit_id);
+      medSet.add(l.medication_id);
+    }
     for (const m of medications) {
       const tm = transformRow('health_medications', m);
-      if (tm.visit_id && visitIds.has(tm.visit_id)) {
-        if (!visitsMedMap[tm.visit_id]) visitsMedMap[tm.visit_id] = [];
-        visitsMedMap[tm.visit_id].push(tm);
-      } else {
-        topMeds.push(tm);
+      tm.visit_ids = medVisitMap[m.id] || [];
+      for (const vid of tm.visit_ids) {
+        (visitsMedMap[vid] = visitsMedMap[vid] || []).push(tm);
       }
     }
+    const topMeds = medications
+      .filter(m => !medSet.has(m.id))
+      .map(m => {
+        const tm = transformRow('health_medications', m);
+        tm.visit_ids = [];
+        return tm;
+      });
     const visitsOut = visits.map(v => {
       const tv = transformRow('health_visits', v);
       tv.medications = visitsMedMap[v.id] || [];
@@ -1747,6 +1763,118 @@ app.get('/api/health/profiles/:id/detail', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error('health profile detail error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// 药物 ↔ 就诊记录 多对多关联管理（visit_medications）
+// ════════════════════════════════════════════════════════════
+
+// 校验 visit/medication 都属于当前用户，返回 [visit, medication]
+async function loadVisitAndMed(userId, visitId, medId) {
+  const [rows] = await pool.query(
+    `SELECT v.id AS visit_id, m.id AS medication_id
+     FROM health_visits v, health_medications m
+     WHERE v.id = ? AND m.id = ?
+       AND v.user_id = ? AND m.user_id = ?
+       AND v.profile_id = m.profile_id`,
+    [visitId, medId, userId, userId]
+  );
+  return rows.length > 0;
+}
+
+// 批量把已有药物加入就诊记录（就诊编辑弹窗"从药物库选择加入"）
+// POST { visit_id, medication_ids: [1,2,3] }
+app.post('/api/health/visit-medications', authMiddleware, async (req, res) => {
+  try {
+    const { visit_id, medication_ids } = req.body || {};
+    const ids = (Array.isArray(medication_ids) ? medication_ids : [])
+      .map(Number).filter(Number.isFinite);
+    if (!Number.isFinite(Number(visit_id)) || ids.length === 0) {
+      return res.json({ data: null, error: { message: '参数无效' } });
+    }
+    // 校验就诊记录归属
+    const [visits] = await pool.query(
+      'SELECT id, profile_id FROM health_visits WHERE id = ? AND user_id = ?', [visit_id, req.user.id]
+    );
+    if (visits.length === 0) return res.json({ data: null, error: { message: '就诊记录不存在' } });
+    // 只允许加入本档案自己的药物
+    const [valid] = await pool.query(
+      `SELECT id FROM health_medications WHERE user_id = ? AND profile_id = ? AND id IN (?)`,
+      [req.user.id, visits[0].profile_id, ids]
+    );
+    const validIds = valid.map(r => r.id);
+    if (validIds.length === 0) return res.json({ data: null, error: { message: '药物不存在' } });
+    const values = validIds.map(mid => `(${Number(visit_id)}, ${mid})`).join(', ');
+    await pool.query(`INSERT IGNORE INTO visit_medications (visit_id, medication_id) VALUES ${values}`);
+    return res.json({ data: { visit_id: Number(visit_id), medication_ids: validIds }, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 从就诊记录移除药物（仅解除关联，药物本身保留在药物库）
+// DELETE /api/health/visit-medications?visit_id=1&medication_id=2
+app.delete('/api/health/visit-medications', authMiddleware, async (req, res) => {
+  try {
+    const { visit_id, medication_id } = req.query;
+    if (!visit_id || !medication_id) {
+      return res.json({ data: null, error: { message: '参数无效' } });
+    }
+    const ok = await loadVisitAndMed(req.user.id, Number(visit_id), Number(medication_id));
+    if (!ok) return res.json({ data: null, error: { message: '记录不存在' } });
+    await pool.query(
+      'DELETE FROM visit_medications WHERE visit_id = ? AND medication_id = ?',
+      [Number(visit_id), Number(medication_id)]
+    );
+    return res.json({ data: { removed: true }, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 全量覆盖某药物的就诊关联（药物编辑弹窗"关联就诊记录"多选保存）
+// POST { medication_id, visit_ids: [1,2,3] }
+app.post('/api/health/medication-visits', authMiddleware, async (req, res) => {
+  try {
+    const { medication_id, visit_ids } = req.body || {};
+    if (!Number.isFinite(Number(medication_id))) {
+      return res.json({ data: null, error: { message: '参数无效' } });
+    }
+    const [meds] = await pool.query(
+      'SELECT id, profile_id FROM health_medications WHERE id = ? AND user_id = ?',
+      [medication_id, req.user.id]
+    );
+    if (meds.length === 0) return res.json({ data: null, error: { message: '药物不存在' } });
+    const vids = (Array.isArray(visit_ids) ? visit_ids : [])
+      .map(Number).filter(Number.isFinite);
+    // 只允许关联本档案的就诊记录
+    let finalIds = [];
+    if (vids.length > 0) {
+      const [valid] = await pool.query(
+        'SELECT id FROM health_visits WHERE profile_id = ? AND user_id = ? AND id IN (?)',
+        [meds[0].profile_id, req.user.id, vids]
+      );
+      finalIds = valid.map(r => r.id);
+    }
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('DELETE FROM visit_medications WHERE medication_id = ?', [Number(medication_id)]);
+      if (finalIds.length > 0) {
+        const values = finalIds.map(vid => `(${vid}, ${Number(medication_id)})`).join(', ');
+        await conn.query(`INSERT IGNORE INTO visit_medications (visit_id, medication_id) VALUES ${values}`);
+      }
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+    return res.json({ data: { medication_id: Number(medication_id), visit_ids: finalIds }, error: null });
+  } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }
 });
@@ -2334,6 +2462,19 @@ app.delete('/api/:table', requireAuthForBusinessTable, async (req, res) => {
 
     const sql = `DELETE FROM ${escapeId(table)} ${whereClause} ${orderClause} ${limitClause}`;
     await pool.query(sql, params);
+
+    // 清理 visit_medications 孤儿关联（就诊/药物被删除后，关联行已无意义）
+    if (table === 'health_visits') {
+      await pool.query(
+        `DELETE vm FROM visit_medications vm
+         LEFT JOIN health_visits v ON v.id = vm.visit_id WHERE v.id IS NULL`
+      );
+    } else if (table === 'health_medications') {
+      await pool.query(
+        `DELETE vm FROM visit_medications vm
+         LEFT JOIN health_medications m ON m.id = vm.medication_id WHERE m.id IS NULL`
+      );
+    }
 
     return res.json({ data: null, error: null });
   } catch (err) {
@@ -3049,9 +3190,36 @@ function describePlanOp(op) {
   return JSON.stringify(op);
 }
 
+// ── visit_medications 表初始化 + 存量数据迁移（幂等，启动时执行一次） ──
+async function ensureVisitMedicationsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS visit_medications (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      visit_id BIGINT NOT NULL,
+      medication_id BIGINT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_visit_med (visit_id, medication_id),
+      KEY idx_vm_medication (medication_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  // 迁移存量一对一数据：health_medications.visit_id → visit_medications
+  await pool.query(`
+    INSERT IGNORE INTO visit_medications (visit_id, medication_id)
+    SELECT m.visit_id, m.id FROM health_medications m
+    WHERE m.visit_id IS NOT NULL
+      AND EXISTS (SELECT 1 FROM health_visits v WHERE v.id = m.visit_id)
+  `);
+}
+
 // ── 启动服务器 ──────────────────────────────────────────────
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`AI-Buddy API server running on http://127.0.0.1:${PORT}`);
-  // 启动 RSS 定时抓取（每 30 分钟）
-  startRssScheduler(30 * 60 * 1000);
-});
+ensureVisitMedicationsTable()
+  .then(() => console.log('visit_medications table ready'))
+  .catch(err => console.error('visit_medications init failed:', err.message))
+  .finally(() => {
+    app.listen(PORT, '127.0.0.1', () => {
+      console.log(`AI-Buddy API server running on http://127.0.0.1:${PORT}`);
+      // 启动 RSS 定时抓取（每 30 分钟）
+      startRssScheduler(30 * 60 * 1000);
+    });
+  });

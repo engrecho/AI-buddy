@@ -42,6 +42,7 @@
 | `health_profiles` | 健康档案（就诊人） | AUTO_INCREMENT | 否 |
 | `health_visits` | 就诊记录 | AUTO_INCREMENT | 否 |
 | `health_medications` | 用药记录 | AUTO_INCREMENT | 否 |
+| `visit_medications` | 药物 ↔ 就诊 多对多关联 | AUTO_INCREMENT | 否 |
 | `vault_items` | 密码保险箱（加密存储） | AUTO_INCREMENT | **是**（`deleted_at`） |
 | `loans` | 贷款主表 | AUTO_INCREMENT | 否 |
 | `loan_payments` | 还款计划表 | AUTO_INCREMENT | 否 |
@@ -356,11 +357,31 @@ CREATE TABLE `health_medications` (
 ```
 
 - `status` 状态：`active`(服用中) / `paused`(暂停) / `completed`(已完成) / `as_needed`(酌情使用)
-- `visit_id` 可空：关联到具体就诊记录的用药走"就诊记录右栏独立编辑"；未关联的归到档案顶层"用药清单"
 - `start_date` / `end_date` 均可空（支持无固定周期的药物）
-- 后端 `GET /api/health_profiles/:id` 详情接口会自动把药物按 `visit_id` 分组：
-  - `visits[].medications` = 本次就诊的药物
+- 药物与就诊记录为**多对多**关联（通过 `visit_medications` 关联表），`visit_id` 列已废弃仅保留兼容；未关联任何就诊的药物归到档案顶层"用药清单"
+- 后端 `GET /api/health/profiles/:id/detail` 详情接口通过关联表分组：
+  - `visits[].medications` = 本次就诊的药物（每个药物带 `visit_ids` 数组，即它关联的所有就诊 id）
   - `profile.medications` = 未关联就诊的顶层药物
+- 关联管理接口：
+  - `POST /api/health/visit-medications` `{ visit_id, medication_ids: [] }` 批量把药物加入某就诊
+  - `DELETE /api/health/visit-medications?visit_id=&medication_id=` 从某就诊移除药物（仅解除关联）
+  - `POST /api/health/medication-visits` `{ medication_id, visit_ids: [] }` 全量覆盖某药物的就诊关联
+- 删除就诊/药物时自动清理 `visit_medications` 孤儿关联
+
+### 14.1 visit_medications（药物 ↔ 就诊记录 多对多关联）
+
+```sql
+CREATE TABLE `visit_medications` (
+  `id`            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `visit_id`      BIGINT NOT NULL,
+  `medication_id` BIGINT NOT NULL,
+  `created_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_visit_med` (`visit_id`, `medication_id`),
+  KEY `idx_vm_medication` (`medication_id`)
+);
+```
+
+- 服务端启动时自动建表，并把存量 `health_medications.visit_id` 一对一数据迁移进本表（幂等）
 
 ---
 

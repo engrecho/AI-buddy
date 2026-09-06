@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { Heart, Plus, Calendar as CalendarIcon, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera, Check, Shield, RotateCw } from 'lucide-react';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -590,7 +590,7 @@ function DateField({ value, onChange, placeholder = '选择日期', disabled }) 
 //   中：诊断记录（主诉/诊断/处方/检查/下次就诊/附件）
 //   右：本次就诊用药清单（独立编辑）
 // ════════════════════════════════════════════════════════════════════
-function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisit, visitMedications, onAddMedication, onEditMedication, onDeleteMedication, onPreviewImage }) {
+function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisit, visitMedications, onAddMedication, onPickMedication, onEditMedication, onDeleteMedication, onPreviewImage }) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
     visit_date: today, hospital: '', department: '', doctor: '',
@@ -640,7 +640,7 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
         setForm(base);
       }
     }
-  }, [open, initial, lastVisit, today]);
+  }, [open, initial?.id, lastVisit, today]);
 
   const copyFromLast = (copyMeds) => {
     if (!lastVisit) return;
@@ -796,15 +796,26 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
                   <Badge variant="secondary" className="text-xs">{visitMedications.length}</Badge>
                 )}
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onAddMedication?.(initial?.id)}
-                disabled={!initial?.id}
-                className="h-7 text-xs active:scale-95"
-              >
-                <Plus className="w-3 h-3 mr-1" /> 添加
-              </Button>
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onPickMedication?.(initial?.id)}
+                  disabled={!initial?.id}
+                  className="h-7 text-xs active:scale-95"
+                >
+                  <Plus className="w-3 h-3 mr-1" /> 从药物库选择
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onAddMedication?.(initial?.id)}
+                  disabled={!initial?.id}
+                  className="h-7 text-xs active:scale-95"
+                >
+                  新建
+                </Button>
+              </div>
             </div>
             {!initial?.id ? (
               <div className="text-xs text-gray-400 py-6 text-center rounded-lg bg-gray-50 border border-dashed border-gray-200">
@@ -866,31 +877,45 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
 // ════════════════════════════════════════════════════════════════════
 // 药物表单 — 移动端单列
 // ════════════════════════════════════════════════════════════════════
-function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, visitId }) {
+function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, visitId, visits = [] }) {
   const [form, setForm] = useState({
     name: '', photo_url: '', usage_instruction: '', dosage: '',
     start_date: '', end_date: '', status: 'active', notes: '',
+    visit_ids: [],
   });
 
   useEffect(() => {
     if (open) {
       if (initial) {
-        setForm(normalizeFormDates(initial, ['start_date', 'end_date']));
+        const normalized = normalizeFormDates(initial, ['start_date', 'end_date']);
+        normalized.visit_ids = Array.isArray(initial.visit_ids) ? [...initial.visit_ids] : [];
+        setForm(normalized);
       } else {
         setForm({
           name: '', photo_url: '', usage_instruction: '', dosage: '',
           start_date: '', end_date: '', status: 'active', notes: '',
+          // 从就诊记录里点"新建药物"时默认关联当前就诊
+          visit_ids: visitId ? [visitId] : [],
         });
       }
     }
-  }, [open, initial]);
+  }, [open, initial, visitId]);
 
   const handleSubmit = () => {
     if (!form.name.trim()) { toast.error('请填写药物名称'); return; }
     const cleaned = cleanForm(form);
     cleaned.profile_id = profileId;
-    cleaned.visit_id = visitId || null;
+    cleaned.visit_ids = form.visit_ids || [];
     onSubmit(cleaned);
+  };
+
+  const toggleVisit = (vid) => {
+    setForm(f => ({
+      ...f,
+      visit_ids: (f.visit_ids || []).includes(vid)
+        ? f.visit_ids.filter(x => x !== vid)
+        : [...(f.visit_ids || []), vid],
+    }));
   };
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
@@ -941,6 +966,41 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
               </SelectContent>
             </Select>
           </Field>
+
+          {/* 关联就诊记录（多选）：同一药物可出现在多次就诊中 */}
+          <Field label="关联就诊记录">
+            {visits.length === 0 ? (
+              <p className="text-xs text-gray-400 py-2">暂无就诊记录</p>
+            ) : (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto rounded-lg border border-gray-100 p-2">
+                {visits.map(v => {
+                  const checked = (form.visit_ids || []).includes(v.id);
+                  return (
+                    <label
+                      key={v.id}
+                      className={`flex items-center gap-2.5 p-2 rounded-md cursor-pointer transition-colors text-xs ${checked ? 'bg-green-50 border border-green-200' : 'hover:bg-gray-50 border border-transparent'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleVisit(v.id)}
+                        className="w-4 h-4 accent-[#bbea3b] flex-shrink-0"
+                      />
+                      <span className="flex-1 min-w-0 truncate">
+                        <span className="font-medium">{formatDate(v.visit_date)}</span>
+                        {v.hospital ? <span className="text-gray-500"> · {v.hospital}</span> : null}
+                        {v.department ? <span className="text-gray-400"> · {v.department}</span> : null}
+                      </span>
+                      {(v.medications || []).length > 0 && (
+                        <span className="text-gray-400 flex-shrink-0">{v.medications.length} 药</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </Field>
+
           <Field label="备注">
             <Textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} rows={2} />
           </Field>
@@ -949,6 +1009,93 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={handleSubmit} className="bg-[#bbea3b] hover:bg-[#a8d435] text-black">保存</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 药物选择器 — 从药物库选择已有药物加入本次就诊（多选）
+// medications：该档案全部药物（药物库），currentMedIds：已在本次就诊中的药物 id
+// ════════════════════════════════════════════════════════════════════
+function MedPickerDialog({ open, onClose, onConfirm, onAddNew, medications = [], currentMedIds = [] }) {
+  const [selected, setSelected] = useState([]);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    if (open) { setSelected([]); setSearch(''); }
+  }, [open]);
+
+  const currentSet = new Set(currentMedIds);
+  const keyword = search.trim().toLowerCase();
+  const list = medications.filter(m =>
+    !currentSet.has(m.id) && (!keyword || (m.name || '').toLowerCase().includes(keyword))
+  );
+
+  const toggle = (id) => {
+    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="w-full max-w-md mx-auto rounded-none sm:rounded-xl max-h-[85dvh] flex flex-col p-0">
+        <DialogHeader className="p-4 pb-2">
+          <DialogTitle className="text-base">从药物库选择</DialogTitle>
+        </DialogHeader>
+        <div className="px-4 pb-2">
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索药物名称..." className="text-sm" />
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 pb-2 min-h-[120px]">
+          {list.length === 0 ? (
+            <p className="text-xs text-gray-400 py-8 text-center">
+              {medications.length === 0 || list.length === 0 && keyword ? '没有匹配的药物，可点下方"新建药物"' : '药物库为空'}
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {list.map(m => {
+                const checked = selected.includes(m.id);
+                return (
+                  <label
+                    key={m.id}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-lg cursor-pointer transition-colors border ${checked ? 'bg-green-50 border-green-300' : 'border-gray-100 hover:bg-gray-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(m.id)}
+                      className="w-4 h-4 accent-[#bbea3b] flex-shrink-0"
+                    />
+                    <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-green-50">
+                      {m.photo_url
+                        ? <img src={toThumbUrl(m.photo_url, 200)} alt={m.name} loading="lazy" className="w-full h-full object-cover" />
+                        : <Pill className="w-4 h-4 text-green-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium truncate">{m.name}</span>
+                        <MedicationStatusBadge status={m.status} />
+                      </div>
+                      {m.dosage && <div className="text-xs text-gray-500 mt-0.5 truncate">{m.dosage}</div>}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="p-4 pt-2 border-t border-gray-100 flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onAddNew} className="flex-1">
+            <Plus className="w-3.5 h-3.5 mr-1" /> 新建药物
+          </Button>
+          <Button
+            size="sm"
+            disabled={selected.length === 0}
+            onClick={() => onConfirm(selected)}
+            className="flex-1 bg-[#bbea3b] hover:bg-[#a8d435] text-black"
+          >
+            加入（{selected.length}）
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1120,9 +1267,22 @@ const HealthPage = () => {
   const [profileDialog, setProfileDialog] = useState({ open: false, initial: null });
   const [visitDialog, setVisitDialog] = useState({ open: false, initial: null });
   const [medDialog, setMedDialog] = useState({ open: false, initial: null, visitId: null });
+  const [medPicker, setMedPicker] = useState({ open: false, visitId: null });
+  const [removeMedTarget, setRemoveMedTarget] = useState(null); // { visit_id, med }
   const [insuranceDialog, setInsuranceDialog] = useState({ open: false, initial: null });
   const [insurances, setInsurances] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // 药物库：该档案全部药物（顶层未关联的 + 各就诊记录里的），按 id 去重
+  const allMedications = useMemo(() => {
+    if (!selectedProfile) return [];
+    const map = new Map();
+    for (const m of selectedProfile.medications || []) map.set(m.id, m);
+    for (const v of selectedProfile.visits || []) {
+      for (const m of v.medications || []) map.set(m.id, m);
+    }
+    return [...map.values()];
+  }, [selectedProfile]);
 
   const loadProfiles = useCallback(async () => {
     setLoading(true);
@@ -1190,14 +1350,76 @@ const HealthPage = () => {
   const saveMed = async (form) => {
     const isNew = !medDialog.initial;
     const id = medDialog.initial?.id;
+    const { visit_ids, ...medBody } = form;
     const path = isNew ? '/api/health_medications' : `/api/health_medications?filter=eq:id:${id}&single=1&return=1`;
     const method = isNew ? 'POST' : 'PATCH';
-    const r = await api(path, { method, body: form });
+    const r = await api(path, { method, body: medBody });
     if (r.error) { toast.error(r.error.message); return; }
+    // 同步药物的就诊关联（多对多，全量覆盖）
+    const medId = isNew ? r.data?.id : id;
+    if (medId) {
+      const rr = await api('/api/health/medication-visits', {
+        method: 'POST',
+        body: { medication_id: medId, visit_ids: Array.isArray(visit_ids) ? visit_ids : [] },
+      });
+      if (rr.error) { toast.error('就诊关联保存失败：' + rr.error.message); return; }
+    }
     toast.success(isNew ? '药物已添加' : '已保存');
     setMedDialog({ open: false, initial: null, visitId: null });
-    if (selectedProfile) loadDetail(selectedProfile.id);
+    if (selectedProfile) {
+      // 就诊编辑弹窗还开着时同步刷新其 initial（用药列表实时更新），
+      // VisitFormDialog 的表单依赖 initial?.id，不会被重置
+      await loadDetail(selectedProfile.id);
+      if (visitDialog.open && visitDialog.initial?.id) {
+        // loadDetail 内 setSelectedProfile 是异步 state，这里从接口返回取最新数据
+        const r2 = await api(`/api/health/profiles/${selectedProfile.id}/detail`);
+        if (r2.data) {
+          const freshVisit = (r2.data.visits || []).find(v => v.id === visitDialog.initial.id);
+          if (freshVisit) setVisitDialog(d => ({ ...d, initial: freshVisit }));
+        }
+      }
+    }
     loadProfiles();
+  };
+
+  // ── 从药物库批量加入本次就诊 ──
+  const handleAddMedications = async (medIds) => {
+    const visitId = medPicker.visitId;
+    if (!visitId || !medIds?.length) return;
+    const r = await api('/api/health/visit-medications', {
+      method: 'POST',
+      body: { visit_id: visitId, medication_ids: medIds },
+    });
+    if (r.error) { toast.error(r.error.message); return; }
+    toast.success(`已加入 ${medIds.length} 个药物`);
+    setMedPicker({ open: false, visitId: null });
+    if (selectedProfile) {
+      // 同步刷新就诊弹窗的用药列表
+      const r2 = await api(`/api/health/profiles/${selectedProfile.id}/detail`);
+      if (r2.data) {
+        setSelectedProfile(r2.data);
+        const freshVisit = (r2.data.visits || []).find(v => v.id === visitId);
+        if (freshVisit) setVisitDialog(d => ({ ...d, initial: freshVisit }));
+      }
+    }
+  };
+
+  // ── 从本次就诊移除药物（仅解除关联，药物保留在药物库） ──
+  const handleRemoveMedFromVisit = async () => {
+    if (!removeMedTarget) return;
+    const { visit_id, med } = removeMedTarget;
+    const r = await api(`/api/health/visit-medications?visit_id=${visit_id}&medication_id=${med.id}`, { method: 'DELETE' });
+    if (r.error) { toast.error(r.error.message); return; }
+    toast.success(`已从本次就诊移除「${med.name}」`);
+    setRemoveMedTarget(null);
+    if (selectedProfile) {
+      const r2 = await api(`/api/health/profiles/${selectedProfile.id}/detail`);
+      if (r2.data) {
+        setSelectedProfile(r2.data);
+        const freshVisit = (r2.data.visits || []).find(v => v.id === visit_id);
+        if (freshVisit) setVisitDialog(d => d.initial?.id === visit_id ? { ...d, initial: freshVisit } : d);
+      }
+    }
   };
 
   // ── 保险记录：POST 创建 / PATCH?id=eq.<ID> 更新 ──
@@ -1238,7 +1460,17 @@ const HealthPage = () => {
     setDeleteTarget(null);
     if (type === 'profile') { setSelectedProfile(null); loadProfiles(); }
     else if (type === 'insurance') { if (selectedProfile) loadInsurances(selectedProfile.id); }
-    else if (selectedProfile) loadDetail(selectedProfile.id);
+    else if (selectedProfile) {
+      // 就诊编辑弹窗还开着时（如从就诊里彻底删除药物），同步刷新其用药列表
+      await loadDetail(selectedProfile.id);
+      if (type === 'medication' && visitDialog.open && visitDialog.initial?.id) {
+        const r2 = await api(`/api/health/profiles/${selectedProfile.id}/detail`);
+        if (r2.data) {
+          const freshVisit = (r2.data.visits || []).find(v => v.id === visitDialog.initial.id);
+          if (freshVisit) setVisitDialog(d => ({ ...d, initial: freshVisit }));
+        }
+      }
+    }
   };
 
   // ── 档案列表视图 ─────────────────────────────────────────
@@ -1708,8 +1940,9 @@ const HealthPage = () => {
         lastVisit={selectedProfile?.visits?.[0] || null}
         visitMedications={visitDialog.initial?.medications || []}
         onAddMedication={(visitId) => setMedDialog({ open: true, initial: null, visitId })}
+        onPickMedication={(visitId) => setMedPicker({ open: true, visitId })}
         onEditMedication={(med) => setMedDialog({ open: true, initial: med, visitId: visitDialog.initial?.id })}
-        onDeleteMedication={(med) => setDeleteTarget({ type: 'medication', id: med.id, name: med.name })}
+        onDeleteMedication={(med) => setRemoveMedTarget({ visit_id: visitDialog.initial?.id, med })}
         onPreviewImage={setPreviewImage}
       />
       <MedicationFormDialog
@@ -1719,6 +1952,18 @@ const HealthPage = () => {
         initial={medDialog.initial}
         profileId={selectedProfile?.id}
         visitId={medDialog.visitId}
+        visits={selectedProfile?.visits || []}
+      />
+      <MedPickerDialog
+        open={medPicker.open}
+        onClose={() => setMedPicker({ open: false, visitId: null })}
+        onConfirm={handleAddMedications}
+        onAddNew={() => {
+          setMedPicker({ open: false, visitId: null });
+          setMedDialog({ open: true, initial: null, visitId: medPicker.visitId });
+        }}
+        medications={allMedications}
+        currentMedIds={(visitDialog.initial?.medications || []).map(m => m.id)}
       />
       <InsuranceFormDialog
         open={insuranceDialog.open}
@@ -1734,6 +1979,37 @@ const HealthPage = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 从本次就诊移除药物：区分解除关联 / 彻底删除 */}
+      <AlertDialog open={!!removeMedTarget} onOpenChange={(v) => !v && setRemoveMedTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>移除「{removeMedTarget?.med?.name}」</AlertDialogTitle>
+            <AlertDialogDescription>
+              仅从本次就诊移除，还是彻底删除该药物？解除关联后药物仍保留在药物库，可再次加入其他就诊记录。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
+            <AlertDialogAction
+              onClick={handleRemoveMedFromVisit}
+              className="w-full bg-[#bbea3b] hover:bg-[#a8d435] text-black"
+            >
+              仅从本次就诊移除
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => {
+                const med = removeMedTarget?.med;
+                setRemoveMedTarget(null);
+                if (med) setDeleteTarget({ type: 'medication', id: med.id, name: med.name });
+              }}
+              className="w-full bg-red-500 hover:bg-red-600"
+            >
+              彻底删除药物
+            </AlertDialogAction>
+            <AlertDialogCancel className="w-full mt-0">取消</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
