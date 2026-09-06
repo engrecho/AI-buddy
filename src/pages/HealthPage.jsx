@@ -1274,6 +1274,7 @@ const HealthPage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   // 药物库：该档案全部药物（顶层未关联的 + 各就诊记录里的），按 id 去重
+  // 服用中优先，其余按创建时间倒序
   const allMedications = useMemo(() => {
     if (!selectedProfile) return [];
     const map = new Map();
@@ -1281,7 +1282,10 @@ const HealthPage = () => {
     for (const v of selectedProfile.visits || []) {
       for (const m of v.medications || []) map.set(m.id, m);
     }
-    return [...map.values()];
+    return [...map.values()].sort((a, b) => {
+      if ((a.status === 'active') !== (b.status === 'active')) return a.status === 'active' ? -1 : 1;
+      return (b.created_at || '').localeCompare(a.created_at || '');
+    });
   }, [selectedProfile]);
 
   const loadProfiles = useCallback(async () => {
@@ -1330,9 +1334,8 @@ const HealthPage = () => {
     if (selectedProfile && selectedProfile.id === id) loadDetail(id);
   };
 
-  // 最新一次就诊记录（visits 已按 visit_date DESC 排序，[0] 即最新）
+  // 最新一次就诊记录（visits 已按 visit_date DESC 排序，[0] 即最新，就诊弹窗"复制上次就诊"用）
   const latestVisit = selectedProfile?.visits?.[0] || null;
-  const latestVisitMeds = latestVisit?.medications || [];
 
   const saveVisit = async (form) => {
     const isNew = !visitDialog.initial;
@@ -1643,74 +1646,84 @@ const HealthPage = () => {
             )}
           </div>
 
-          {/* 当前用药 — 展示最新一次就诊的用药清单 */}
+          {/* 药物记录 — 该档案全部药物的纯净列表，点击直接编辑药物并关联就诊 */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Pill className="w-4 h-4 text-green-500" />
-                <h3 className="text-sm font-semibold">最新用药清单</h3>
-                {latestVisitMeds.length > 0 && <Badge variant="secondary" className="text-xs">{latestVisitMeds.length}</Badge>}
-                {latestVisit && (
-                  <span className="text-xs text-gray-400">· {formatDate(latestVisit.visit_date)}</span>
-                )}
+                <h3 className="text-sm font-semibold">药物记录</h3>
+                {allMedications.length > 0 && <Badge variant="secondary" className="text-xs">{allMedications.length}</Badge>}
               </div>
-              {latestVisit && (
-                <Button size="sm" variant="outline" onClick={() => setVisitDialog({ open: true, initial: latestVisit })} className="active:scale-95">
-                  <Pill className="w-3.5 h-3.5 mr-1" /> 管理用药
-                </Button>
-              )}
+              <Button size="sm" variant="outline" onClick={() => setMedDialog({ open: true, initial: null, visitId: null })} className="active:scale-95">
+                <Plus className="w-3.5 h-3.5 mr-1" /> 添加药物
+              </Button>
             </div>
-            {!latestVisit ? (
-              <p className="text-xs text-gray-400 py-6 text-center">暂无就诊记录，请先添加就诊</p>
-            ) : latestVisitMeds.length === 0 ? (
-              <p className="text-xs text-gray-400 py-6 text-center">本次就诊未记录用药</p>
+            {allMedications.length === 0 ? (
+              <p className="text-xs text-gray-400 py-6 text-center">暂无药物记录</p>
             ) : (
               <div className="space-y-2">
-                {latestVisitMeds.map(med => (
-                  <div key={med.id} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
-                    {/* 药物图片 */}
+                {allMedications.map(med => {
+                  // 该药物关联的就诊日期（从 visit_ids 反查）
+                  const linkedVisitDates = (med.visit_ids || [])
+                    .map(vid => {
+                      const v = (selectedProfile?.visits || []).find(x => x.id === vid);
+                      return v ? formatDate(v.visit_date) : null;
+                    })
+                    .filter(Boolean);
+                  return (
                     <div
-                      className="w-12 h-12 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-green-50 cursor-pointer"
-                      onClick={() => med.photo_url && setPreviewImage(med.photo_url)}
+                      key={med.id}
+                      className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => setMedDialog({ open: true, initial: med, visitId: null })}
                     >
-                      {med.photo_url
-                        ? <img src={toThumbUrl(med.photo_url, 200)} alt={med.name} loading="lazy" className="w-full h-full object-cover" />
-                        : <Pill className="w-5 h-5 text-green-500" />}
-                    </div>
-                    {/* 药物信息 */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium">{med.name}</span>
-                        <MedicationStatusBadge status={med.status} />
+                      {/* 药物图片 */}
+                      <div
+                        className="w-12 h-12 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-green-50"
+                        onClick={e => { if (med.photo_url) { e.stopPropagation(); setPreviewImage(med.photo_url); } }}
+                      >
+                        {med.photo_url
+                          ? <img src={toThumbUrl(med.photo_url, 200)} alt={med.name} loading="lazy" className="w-full h-full object-cover" />
+                          : <Pill className="w-5 h-5 text-green-500" />}
                       </div>
-                      {med.dosage && <div className="text-xs text-gray-500 mt-1">{med.dosage}</div>}
-                      {med.usage_instruction && <div className="text-xs text-gray-400 mt-0.5">{med.usage_instruction}</div>}
-                      {(med.start_date || med.end_date) && (
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {formatDateRange(med.start_date, med.end_date) || '未设日期'}
-                          {med.start_date && !med.end_date && ' ~ 至今'}
+                      {/* 药物信息 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">{med.name}</span>
+                          <MedicationStatusBadge status={med.status} />
                         </div>
-                      )}
+                        {med.dosage && <div className="text-xs text-gray-500 mt-1">{med.dosage}</div>}
+                        {med.usage_instruction && <div className="text-xs text-gray-400 mt-0.5">{med.usage_instruction}</div>}
+                        {(med.start_date || med.end_date) && (
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {formatDateRange(med.start_date, med.end_date) || '未设日期'}
+                            {med.start_date && !med.end_date && ' ~ 至今'}
+                          </div>
+                        )}
+                        {/* 关联的就诊记录 */}
+                        {linkedVisitDates.length > 0
+                          ? <div className="text-xs text-gray-400 mt-0.5">关联就诊：{linkedVisitDates.join('、')}</div>
+                          : <div className="text-xs text-gray-300 mt-0.5">未关联就诊</div>}
+                      </div>
+                      {/* 操作按钮 */}
+                      <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setMedDialog({ open: true, initial: med, visitId: null })}
+                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors active:scale-90"
+                          aria-label="编辑"
+                        >
+                          <Pill className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget({ type: 'medication', id: med.id, name: med.name })}
+                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90"
+                          aria-label="删除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    {/* 操作按钮 */}
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => setMedDialog({ open: true, initial: med, visitId: latestVisit.id })}
-                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors active:scale-90"
-                        aria-label="编辑"
-                      >
-                        <Pill className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget({ type: 'medication', id: med.id, name: med.name })}
-                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90"
-                        aria-label="删除"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
