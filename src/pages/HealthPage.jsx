@@ -408,7 +408,7 @@ function Field({ label, required, children, className = '' }) {
 // ════════════════════════════════════════════════════════════════════
 function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
   const [form, setForm] = useState({
-    patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '',
+    patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '', birth_lunar: false,
     disease_name: '', color: COLOR_OPTIONS[0], status: 'active', notes: '',
   });
 
@@ -418,7 +418,7 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
         setForm(normalizeFormDates(initial, ['birth_date']));
       } else {
         setForm({
-          patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '',
+          patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '', birth_lunar: false,
           disease_name: '', color: COLOR_OPTIONS[0], status: 'active', notes: '',
         });
       }
@@ -468,6 +468,14 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
                 </SelectContent>
               </Select>
             </Field>
+          </div>
+          {/* 阴历生日 */}
+          <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-sm text-gray-700">按阴历（农历）过生日</div>
+              <div className="text-xs text-gray-400">开启后上面填写的出生日期按农历计算</div>
+            </div>
+            <Switch checked={!!form.birth_lunar} onCheckedChange={v => set('birth_lunar', v)} />
           </div>
           <Field label="疾病名称" required>
             <Input value={form.disease_name} onChange={e => set('disease_name', e.target.value)} placeholder="如：高血压 / 2型糖尿病" />
@@ -1378,7 +1386,7 @@ const HealthPage = () => {
               </div>
               <div>
                 <div className="text-xs text-gray-400 mb-0.5">出生日期</div>
-                <div className="text-sm font-medium">{formatDate(selectedProfile.birth_date) || '-'}</div>
+                <div className="text-sm font-medium">{formatDate(selectedProfile.birth_date) || '-'}{selectedProfile.birth_lunar ? '（农历）' : ''}</div>
               </div>
               <div>
                 <div className="text-xs text-gray-400 mb-0.5">就诊次数</div>

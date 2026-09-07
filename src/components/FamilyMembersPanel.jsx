@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 
 // ── API 工具 ────────────────────────────────────────────────
 function getAuthHeaders(json = false) {
@@ -47,7 +48,7 @@ function maskIdCard(v) {
 }
 
 const EMPTY = {
-  patient_name: '', relationship: '', gender: '', birth_date: '', id_card: '',
+  patient_name: '', relationship: '', gender: '', birth_date: '', id_card: '', birth_lunar: false,
 };
 
 export function FamilyMembersPanel() {
@@ -82,6 +83,7 @@ export function FamilyMembersPanel() {
       gender: m.gender || '',
       birth_date: m.birth_date ? String(m.birth_date).slice(0, 10) : '',
       id_card: m.id_card || '',
+      birth_lunar: !!m.birth_lunar,
     });
     setDialogOpen(true);
   };
@@ -98,6 +100,7 @@ export function FamilyMembersPanel() {
         gender: form.gender || null,
         birth_date: form.birth_date || null,
         id_card: form.id_card?.trim() || null,
+        birth_lunar: form.birth_lunar ? 1 : 0,
         status: 'active',
       };
       if (editing) {
@@ -174,7 +177,7 @@ export function FamilyMembersPanel() {
                   </div>
                   <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
                     <span>{m.gender === 'female' ? '女' : m.gender === 'male' ? '男' : '—'}</span>
-                    {m.birth_date && <span>{m.birth_date}</span>}
+                    {m.birth_date && <span>{m.birth_date}{m.birth_lunar ? '（农历）' : ''}</span>}
                     {m.id_card && <span className="font-mono">{maskIdCard(m.id_card)}</span>}
                   </div>
                 </div>
@@ -233,6 +236,14 @@ export function FamilyMembersPanel() {
                 <label className="text-xs text-gray-500 mb-1 block">身份证号</label>
                 <Input value={form.id_card} onChange={e => set('id_card', e.target.value)} placeholder="选填" maxLength={18} />
               </div>
+            </div>
+            {/* 阴历生日 */}
+            <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm text-gray-700">按阴历（农历）过生日</div>
+                <div className="text-xs text-gray-400">开启后上面填写的出生日期按农历计算</div>
+              </div>
+              <Switch checked={!!form.birth_lunar} onCheckedChange={v => set('birth_lunar', v)} />
             </div>
           </div>
           <DialogFooter>

@@ -344,6 +344,7 @@ CREATE TABLE IF NOT EXISTS `health_profiles` (
   `relationship` varchar(32) DEFAULT NULL COMMENT '与本人关系',
   `gender` varchar(10) DEFAULT NULL,
   `birth_date` date DEFAULT NULL,
+  `birth_lunar` tinyint(1) NOT NULL DEFAULT 0 COMMENT '生日是否按农历',
   `disease_name` varchar(200) NOT NULL DEFAULT '',
   `color` varchar(20) DEFAULT NULL,
   `tags` json DEFAULT NULL,
