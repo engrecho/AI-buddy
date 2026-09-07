@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
-import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2, Rss, Heart, Lock, Wallet } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2, Heart, Lock, Wallet } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
 const TasksPage = lazy(() => import('./TasksPage'));
 const MemosPage = lazy(() => import('./MemosPage'));
-const ReadingPage = lazy(() => import('./ReadingPage'));
+const ReadingHub = lazy(() => import('./ReadingHub'));
 const DashboardPage = lazy(() => import('./DashboardPage'));
-const RssPage = lazy(() => import('./RssPage'));
 const HealthPage = lazy(() => import('./HealthPage'));
 const VaultPage = lazy(() => import('./VaultPage'));
 const FinancePage = lazy(() => import('./FinancePage'));
@@ -31,7 +30,6 @@ const navItems = [
   { id: 'tasks', label: '任务', icon: CheckSquare },
   { id: 'memos', label: '备忘', icon: FileText },
   { id: 'reading', label: '阅读', icon: BookOpen },
-  { id: 'rss', label: '订阅', icon: Rss },
   { id: 'health', label: '健康', icon: Heart },
   { id: 'finance', label: '财务', icon: Wallet },
   { id: 'vault', label: '保险箱', icon: Lock },
@@ -41,8 +39,7 @@ const pageTitles = {
   dashboard: '统计',
   tasks: '任务',
   memos: '备忘',
-  reading: '阅读',
-  rss: 'RSS 订阅',
+  reading: '阅读中心',
   health: '健康档案',
   finance: '财务管理',
   vault: '密码保险箱',
@@ -494,13 +491,7 @@ const Index = () => {
       case 'reading':
         return (
           <Suspense fallback={<TabLoader />}>
-            <ReadingPage initialReadingId={pendingReadingId} onInitialReadingConsumed={() => setPendingReadingId(null)} />
-          </Suspense>
-        );
-      case 'rss':
-        return (
-          <Suspense fallback={<TabLoader />}>
-            <RssPage />
+            <ReadingHub initialReadingId={pendingReadingId} onInitialReadingConsumed={() => setPendingReadingId(null)} />
           </Suspense>
         );
       case 'health':
