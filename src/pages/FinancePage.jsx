@@ -591,28 +591,31 @@ export default function FinancePage() {
   const goLoan = () => { setActiveSection('loan'); setSelectedLoan(null); setLoanDetail(null); };
   const goInsurance = () => { setActiveSection('insurance'); setSelectedLoan(null); setLoanDetail(null); };
 
-  // 金刚区（贷款 / 保险大图标入口）
+  // 顶部双大标签（贷款 / 保险），样式与阅读中心一致
   const renderGoldenGate = (current) => {
-    const card = (key, label, desc, Icon, active) => (
+    const tab = (key, label, Icon, active) => (
       <button
-        onClick={key === 'loan' ? goLoan : goInsurance}
-        className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3 text-left active:scale-[0.98] transition-all"
-        style={{ borderColor: active ? '#bbea3b' : '#e5e7eb', boxShadow: active ? '0 0 0 2px #bbea3b inset' : 'none' }}
+        key={key}
+        onClick={() => (key === 'loan' ? goLoan() : goInsurance())}
+        aria-selected={active}
+        className="flex items-center justify-center gap-2 py-3 rounded-xl border font-semibold transition-all active:scale-[0.98]"
+        style={
+          active
+            ? { backgroundColor: '#5a7a00', color: '#ffffff', borderColor: '#5a7a00', boxShadow: '0 0 0 2px #bbea3b inset' }
+            : { backgroundColor: '#ffffff', color: '#6b7280', borderColor: '#e5e7eb' }
+        }
       >
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: active ? '#bbea3b' : '#f3f4f6', color: '#5a7a00' }}>
-          <Icon className="w-6 h-6" />
-        </div>
-        <div className="min-w-0">
-          <div className="font-semibold text-gray-800">{label}</div>
-          <div className="text-xs text-gray-400 truncate">{desc}</div>
-        </div>
+        <Icon className="w-5 h-5" />
+        {label}
       </button>
     );
     return (
-      <div className="px-4 pt-4">
-        <div className="max-w-4xl mx-auto grid grid-cols-2 gap-3">
-          {card('loan', '贷款', `${loans.length} 笔 · 房贷/车贷/消费贷`, TrendingDown, current === 'loan')}
-          {card('insurance', '保险', `${insurances.length} 份 · 保单管理`, Shield, current === 'insurance')}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 pt-3 pb-3">
+        <div className="max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 gap-3 max-w-md">
+            {tab('loan', '贷款', TrendingDown, current === 'loan')}
+            {tab('insurance', '保险', Shield, current === 'insurance')}
+          </div>
         </div>
       </div>
     );
