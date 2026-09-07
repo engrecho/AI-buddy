@@ -8,6 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { lunarDateText } from '@/lib/lunar';
 
 // ── API 工具 ────────────────────────────────────────────────
 function getAuthHeaders(json = false) {
@@ -177,7 +178,7 @@ export function FamilyMembersPanel() {
                   </div>
                   <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
                     <span>{m.gender === 'female' ? '女' : m.gender === 'male' ? '男' : '—'}</span>
-                    {m.birth_date && <span>{m.birth_date}{m.birth_lunar ? '（农历）' : ''}</span>}
+                    {m.birth_date && <span>公历 {m.birth_date}{m.birth_lunar ? ` · 农历 ${lunarDateText(m.birth_date)}` : ''}</span>}
                     {m.id_card && <span className="font-mono">{maskIdCard(m.id_card)}</span>}
                   </div>
                 </div>
@@ -241,7 +242,7 @@ export function FamilyMembersPanel() {
             <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5">
               <div className="min-w-0">
                 <div className="text-sm text-gray-700">按阴历（农历）过生日</div>
-                <div className="text-xs text-gray-400">开启后上面填写的出生日期按农历计算</div>
+                <div className="text-xs text-gray-400">开启后同时显示公历与农历生日，如「农历腊月初十」</div>
               </div>
               <Switch checked={!!form.birth_lunar} onCheckedChange={v => set('birth_lunar', v)} />
             </div>
