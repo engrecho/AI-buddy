@@ -49,7 +49,7 @@ export function LunarBirthdayPicker({ value, lunar, onValueChange, onLunarChange
     const yy = Number(year) || new Date().getFullYear();
     const safeDay = Math.min(day, lunarMonthMaxDays(yy, month, isLeap));
     setLy(yy); setLm(month); setLi(isLeap); setLd(safeDay);
-    const solar = lunarToSolarDate(yy, month, isLeap, safeDay);
+    const solar = lunarToSolarDate(yy, month, safeDay, isLeap);
     if (solar) onValueChange(solar);
   };
 
