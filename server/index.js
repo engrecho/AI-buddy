@@ -1128,9 +1128,24 @@ function isoToMysqlDatetime(value) {
   return value;
 }
 
-function mysqlDatetimeToIso(value) {
+// 纯日期型业务列（存的是「哪天」，无时分秒意义）：
+// 读取时按服务器本地墙钟还原为 YYYY-MM-DD，不做 UTC 偏移，避免跨时区变成前一天。
+const DATE_ONLY_COLUMNS = new Set([
+  'birth_date', 'due_date', 'plan_date', 'visit_date', 'next_visit_date',
+  'next_visit_date_end', 'start_date', 'end_date', 'effective_date',
+  'expiry_date', 'paid_date',
+]);
+
+function mysqlDatetimeToIso(value, column = '') {
   if (value === null || value === undefined) return value;
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) {
+    // mysql2 默认把 DATE/DATETIME 解析成「服务器本地时间」的 Date
+    if (DATE_ONLY_COLUMNS.has(column)) {
+      const p = n => String(n).padStart(2, '0');
+      return `${value.getFullYear()}-${p(value.getMonth() + 1)}-${p(value.getDate())}`;
+    }
+    return value.toISOString();
+  }
   if (typeof value !== 'string') return value;
   const dtMatch = value.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(\.\d+)?$/);
   if (dtMatch) return `${dtMatch[1]}T${dtMatch[2]}.000Z`;
@@ -1164,7 +1179,7 @@ function transformRow(table, row) {
   }
   for (const col of (DATETIME_COLUMNS[table] || [])) {
     if (row[col] !== null && row[col] !== undefined) {
-      row[col] = mysqlDatetimeToIso(row[col]);
+      row[col] = mysqlDatetimeToIso(row[col], col);
     }
   }
   for (const col of (BOOLEAN_COLUMNS[table] || [])) {
