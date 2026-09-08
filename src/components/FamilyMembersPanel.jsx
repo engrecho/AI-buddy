@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Switch } from '@/components/ui/switch';
+import { LunarBirthdayPicker } from '@/components/LunarBirthdayPicker';
 import { lunarDateText } from '@/lib/lunar';
 
 // ── API 工具 ────────────────────────────────────────────────
@@ -178,7 +178,14 @@ export function FamilyMembersPanel() {
                   </div>
                   <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
                     <span>{m.gender === 'female' ? '女' : m.gender === 'male' ? '男' : '—'}</span>
-                    {m.birth_date && <span>公历 {m.birth_date}{m.birth_lunar ? ` · 农历 ${lunarDateText(m.birth_date)}` : ''}</span>}
+                    {m.birth_date && (
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <span className="px-1.5 py-px rounded bg-blue-50 text-blue-700">阳历 {m.birth_date}</span>
+                        {lunarDateText(m.birth_date) && (
+                          <span className="px-1.5 py-px rounded bg-amber-50 text-amber-700">阴历 {lunarDateText(m.birth_date)}</span>
+                        )}
+                      </span>
+                    )}
                     {m.id_card && <span className="font-mono">{maskIdCard(m.id_card)}</span>}
                   </div>
                 </div>
@@ -230,22 +237,17 @@ export function FamilyMembersPanel() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">出生日期</label>
-                <Input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)} />
-              </div>
-              <div>
                 <label className="text-xs text-gray-500 mb-1 block">身份证号</label>
                 <Input value={form.id_card} onChange={e => set('id_card', e.target.value)} placeholder="选填" maxLength={18} />
               </div>
             </div>
-            {/* 阴历生日 */}
-            <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="text-sm text-gray-700">按阴历（农历）过生日</div>
-                <div className="text-xs text-gray-400">开启后同时显示公历与农历生日，如「农历腊月初十」</div>
-              </div>
-              <Switch checked={!!form.birth_lunar} onCheckedChange={v => set('birth_lunar', v)} />
-            </div>
+            {/* 生日：阳历 / 农历 选择器（农历可直接选「腊月二十」并换算阳历） */}
+            <LunarBirthdayPicker
+              value={form.birth_date}
+              lunar={!!form.birth_lunar}
+              onValueChange={(d) => set('birth_date', d)}
+              onLunarChange={(v) => set('birth_lunar', v)}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>

@@ -342,6 +342,7 @@ CREATE TABLE IF NOT EXISTS `health_profiles` (
   `patient_avatar_url` text DEFAULT NULL,
   `id_card` varchar(32) DEFAULT NULL COMMENT '身份证号',
   `relationship` varchar(32) DEFAULT NULL COMMENT '与本人关系',
+  `member_id` bigint(20) DEFAULT NULL COMMENT '关联的家庭成员ID(health_profiles.id 自关联)',
   `gender` varchar(10) DEFAULT NULL,
   `birth_date` date DEFAULT NULL,
   `birth_lunar` tinyint(1) NOT NULL DEFAULT 0 COMMENT '生日是否按农历',
@@ -354,7 +355,8 @@ CREATE TABLE IF NOT EXISTS `health_profiles` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_health_profiles_user` (`user_id`, `deleted_at`, `created_at`)
+  KEY `idx_health_profiles_user` (`user_id`, `deleted_at`, `created_at`),
+  KEY `idx_health_profiles_member` (`member_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 就诊记录

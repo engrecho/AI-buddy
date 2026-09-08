@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Switch } from '@/components/ui/switch';
 import { lunarDateText } from '@/lib/lunar';
+import { LunarBirthdayPicker } from '@/components/LunarBirthdayPicker';
 
 // ════════════════════════════════════════════════════════════════════
 // 设计系统（统一字号 / 间距 / 触摸目标）
@@ -408,23 +408,36 @@ function Field({ label, required, children, className = '' }) {
 // 档案表单弹窗 — 移动端单列、桌面端双列
 // ════════════════════════════════════════════════════════════════════
 function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
-  const [form, setForm] = useState({
+  const emptyForm = () => ({
     patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '', birth_lunar: false,
-    disease_name: '', color: COLOR_OPTIONS[0], status: 'active', notes: '',
+    disease_name: '', color: COLOR_OPTIONS[0], status: 'active', notes: '', member_id: '',
   });
+  const [form, setForm] = useState(emptyForm());
+  const [members, setMembers] = useState([]);
 
   useEffect(() => {
     if (open) {
-      if (initial) {
-        setForm(normalizeFormDates(initial, ['birth_date']));
-      } else {
-        setForm({
-          patient_name: '', patient_avatar_url: '', gender: 'unknown', birth_date: '', birth_lunar: false,
-          disease_name: '', color: COLOR_OPTIONS[0], status: 'active', notes: '',
-        });
-      }
+      setForm(initial ? normalizeFormDates(initial, ['birth_date']) : emptyForm());
+      // 载入家庭成员列表，供「关联家庭成员」选择
+      api('/api/health_profiles?filter=deleted_at.is.null&order=patient_name:asc')
+        .then(d => { if (Array.isArray(d.data)) setMembers(d.data); })
+        .catch(() => {});
     }
   }, [open, initial]);
+
+  // 选择家庭成员 → 自动带出姓名/性别/生日(含农历)/关系，并绑定 member_id
+  const handleMemberSelect = (val) => {
+    const m = members.find(x => String(x.id) === String(val));
+    if (!m) return;
+    setForm(f => ({
+      ...f,
+      member_id: m.id,
+      patient_name: m.patient_name || f.patient_name,
+      gender: m.gender || f.gender,
+      birth_date: m.birth_date ? toDateInputValue(m.birth_date) : f.birth_date,
+      birth_lunar: !!m.birth_lunar,
+    }));
+  };
 
   const handleSubmit = () => {
     if (!form.patient_name.trim()) { toast.error('请填写患者姓名'); return; }
@@ -441,6 +454,32 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
           <DialogTitle className="text-base">{initial ? '编辑档案' : '新建健康档案'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
+          {/* 关联家庭成员：选择后自动带出姓名/性别/生日(含农历)，并建立绑定关系 */}
+          <Field label="关联家庭成员" className="!mt-0">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <Select value={form.member_id ? String(form.member_id) : ''} onValueChange={handleMemberSelect}>
+                  <SelectTrigger>
+                    {form.member_id
+                      ? (() => { const m = members.find(x => String(x.id) === String(form.member_id)); return <SelectValue>{m ? `${m.patient_name}${m.relationship ? `（${m.relationship}）` : ''}` : ''}</SelectValue>; })()
+                      : <SelectValue placeholder="选择家庭成员（选填）" />}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-gray-400">暂无家庭成员，可前往「设置 → 家庭成员」添加</div>
+                    )}
+                    {members.map(m => (
+                      <SelectItem key={m.id} value={String(m.id)}>
+                        {m.patient_name}{m.relationship ? `（${m.relationship}）` : ''}
+                        {m.birth_date ? ` · ${toDateInputValue(m.birth_date)}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">选中家人的姓名、性别、生日（含农历）会自动填充，并与该档案建立关联</p>
+          </Field>
           <div className="flex flex-col sm:flex-row gap-4">
             <Field label="患者姓名" required className="flex-1 min-w-0">
               <Input value={form.patient_name} onChange={e => set('patient_name', e.target.value)} placeholder="如：张三 / 父亲" />
@@ -457,9 +496,15 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
             </Field>
           </div>
           <div className="flex flex-col sm:flex-row gap-4">
-            <Field label="出生日期" className="flex-1 min-w-0">
-              <DateField value={form.birth_date || ''} onChange={v => set('birth_date', v)} placeholder="选择出生日期" />
-            </Field>
+            <div className="flex-1 min-w-0">
+              {/* 生日：阳历 / 农历 选择器（农历可直接选「腊月二十」并换算阳历） */}
+              <LunarBirthdayPicker
+                value={form.birth_date}
+                lunar={!!form.birth_lunar}
+                onValueChange={v => set('birth_date', v)}
+                onLunarChange={v => set('birth_lunar', v)}
+              />
+            </div>
             <Field label="状态" className="flex-1 min-w-0">
               <Select value={form.status} onValueChange={v => set('status', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -469,14 +514,6 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
                 </SelectContent>
               </Select>
             </Field>
-          </div>
-          {/* 阴历生日 */}
-          <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5">
-            <div className="min-w-0">
-              <div className="text-sm text-gray-700">按阴历（农历）过生日</div>
-              <div className="text-xs text-gray-400">开启后同时显示公历与农历生日，如「农历腊月初十」</div>
-            </div>
-            <Switch checked={!!form.birth_lunar} onCheckedChange={v => set('birth_lunar', v)} />
           </div>
           <Field label="疾病名称" required>
             <Input value={form.disease_name} onChange={e => set('disease_name', e.target.value)} placeholder="如：高血压 / 2型糖尿病" />

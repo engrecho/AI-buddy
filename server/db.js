@@ -73,7 +73,7 @@ export const TABLE_COLUMNS = {
   ],
   // â”€â”€ å¥åº·æ¡£æ¡ˆæ¨¡å— â”€â”€
   health_profiles: [
-    'id', 'user_id', 'patient_name', 'patient_avatar_url', 'id_card', 'relationship',
+    'id', 'user_id', 'patient_name', 'patient_avatar_url', 'id_card', 'relationship', 'member_id',
     'gender', 'birth_date', 'birth_lunar', 'disease_name', 'color', 'tags', 'status', 'notes',
     'deleted_at', 'created_at', 'updated_at'
   ],

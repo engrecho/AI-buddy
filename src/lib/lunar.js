@@ -91,3 +91,72 @@ export function lunarDateText(dateStr) {
   if (!r) return '';
   return (r.isLeap ? '闰' : '') + monthCn(r.month) + dayCn(r.day);
 }
+
+// 农历年月日在「农历 1900 年正月初一(1900-01-31)」之后的天数（不含当天）。
+// 返回 null 表示该农历日期非法（闰月与当年不符 / 日超出当月大小）。
+function lunarToOffset(y, m, d, isLeap) {
+  if (y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1) return null;
+  const leap = leapMonth(y);
+  if (isLeap && leap !== m) return null; // 只有当年有闰 m 月时才能选闰 m 月
+  if ((isLeap && d > leapDays(y)) || (!isLeap && d > monthDays(y, m))) return null;
+
+  let offset = 0;
+  for (let i = 1900; i < y; i++) offset += lYearDays(i);
+
+  // 逐月累加：闰月紧随正 m 月之后，因此编号比 m 大的月份要在「过了 m 月和 m 月」之后。
+  let passed = false;
+  for (let i = 1; i < m; i++) {
+    if (leap > 0 && i === leap && !passed) { offset += leapDays(y); passed = true; }
+    offset += monthDays(y, i);
+  }
+  // 目标恰为闰月：需先足正 m 月的天数，闰月天数单独计入
+  if (isLeap) offset += monthDays(y, m);
+  offset += d - 1;
+  return offset;
+}
+
+// 农历 → 阳历。参数：农历年 / 农历月(1-12) / 农历日(1-30) / 是否闰月。
+// 返回 { year, month, day }（阳历），非法返回 null。
+export function lunarToSolar(lunarYear, lunarMonth, lunarDay, isLeap = false) {
+  const offset = lunarToOffset(lunarYear, lunarMonth, lunarDay, isLeap);
+  if (offset === null) return null;
+  const base = new Date(1900, 0, 31); // 1900-01-31 对应农历正月初一
+  const dt = new Date(base.getTime() + offset * 86400000);
+  return { year: dt.getFullYear(), month: dt.getMonth() + 1, day: dt.getDate() };
+}
+
+// 农历 → 阳历日期字符串（YYYY-MM-DD）。非法返回空字符串。
+export function lunarToSolarDate(lunarYear, lunarMonth, lunarDay, isLeap = false) {
+  const r = lunarToSolar(lunarYear, lunarMonth, lunarDay, isLeap);
+  if (!r) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${r.year}-${pad(r.month)}-${pad(r.day)}`;
+}
+
+// 农历中文（如「腊月二十」「闰四月」），无日的版本，供选择器分组标题复用。
+export function lunarMonthText(month, isLeap = false) {
+  return (isLeap ? '闰' : '') + monthCn(month);
+}
+
+// 农历日中文名列表（初一 ~ 三十）
+export const LUNAR_DAYS = Array.from({ length: 30 }, (_, i) => ({ value: i + 1, label: dayCn(i + 1) }));
+
+// 农历选择器月份列表：正月 ~ 腊月
+export function lunarMonthOptions(leapMonthNo) {
+  const opts = [];
+  for (let m = 1; m <= 12; m++) {
+    opts.push({ value: m, label: monthCn(m), isLeap: false });
+    if (leapMonthNo === m) opts.push({ value: m, label: '闰' + monthCn(m), isLeap: true });
+  }
+  return opts;
+}
+
+// 某农历年的闰月月份（0 = 无闰月）
+export function leapMonthOf(year) {
+  return leapMonth(year);
+}
+
+// 某农历年指定月(或闰月)的最大天数（30 或 29）
+export function lunarMonthMaxDays(year, month, isLeap = false) {
+  return isLeap ? leapDays(year) : monthDays(year, month);
+}

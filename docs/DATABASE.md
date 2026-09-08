@@ -289,8 +289,10 @@ CREATE TABLE `health_profiles` (
     `patient_name` VARCHAR(100) NOT NULL,         -- 患者姓名（如：张三 / 父亲）
     `id_card`     VARCHAR(32) NULL,                -- 身份证号（家庭成员管理用）
     `relationship` VARCHAR(32) NULL,               -- 与本人关系：本人/妻子/丈夫/女儿/儿子/母亲/父亲/其他
+    `member_id`   BIGINT NULL,                     -- 关联的家庭成员ID（health_profiles.id 自关联）
     `gender`      ENUM('male','female') NULL,      -- 性别
-    `birth_date`  DATE NULL,                       -- 出生日期（可空）
+    `birth_date`  DATE NULL,                       -- 出生日期（统一存公历，可空）
+    `birth_lunar` TINYINT(1) DEFAULT 0,            -- 生日是否按阴历（农历）记
     `blood_type`  VARCHAR(10) NULL,                -- 血型
     `allergies`   TEXT NULL,                       -- 过敏史
     `medical_history` TEXT NULL,                    -- 既往病史
@@ -301,6 +303,8 @@ CREATE TABLE `health_profiles` (
 
 - 一个用户可有多个档案（自己、父母、子女）
 - `id_card` / `relationship` 于 2026-09 新增，用于「设置 → 家庭成员」管理与保险「被保人」关联
+- `member_id` 于 2026-09 新增（`health_profiles` 自关联）：健康档案选择家人后绑定，避免重复录入；由一次性迁移脚本 `deploy/once/19-add-health-member-link.sh` 幂等添加
+- `birth_lunar` 于 2026-09 新增：标识生日是否按农历记；`birth_date` 统一存公历，需农历展示时前端用 `src/lib/lunar.js` 双向换算（覆盖 1900–2100 年）
 - `birth_date` 后端返回 ISO 字符串（如 `2021-11-14T16:00:00.000Z`），前端用本地时区转换显示
 
 ---
