@@ -48,6 +48,20 @@ function maskIdCard(v) {
   return v.slice(0, 3) + '***********' + v.slice(-4);
 }
 
+// 生日展示：去掉时分秒，只留日期；按阴历记生日时以阴历为主、阳历放括号里
+function birthDisplay(m) {
+  const solar = m.birth_date ? String(m.birth_date).slice(0, 10) : '';
+  if (!solar) return null;
+  const lunar = lunarDateText(solar);
+  if (m.birth_lunar) {
+    return {
+      chip: 'bg-amber-50 text-amber-700',
+      text: <><span>{lunar}</span><span className="text-gray-500">（阳历 {solar}）</span></>,
+    };
+  }
+  return { chip: 'bg-blue-50 text-blue-700', text: <>阳历 {solar}</> };
+}
+
 const EMPTY = {
   patient_name: '', relationship: '', gender: '', birth_date: '', id_card: '', birth_lunar: false,
 };
@@ -178,14 +192,9 @@ export function FamilyMembersPanel() {
                   </div>
                   <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
                     <span>{m.gender === 'female' ? '女' : m.gender === 'male' ? '男' : '—'}</span>
-                    {m.birth_date && (
-                      <span className="inline-flex flex-wrap items-center gap-1.5">
-                        <span className="px-1.5 py-px rounded bg-blue-50 text-blue-700">阳历 {m.birth_date}</span>
-                        {lunarDateText(m.birth_date) && (
-                          <span className="px-1.5 py-px rounded bg-amber-50 text-amber-700">阴历 {lunarDateText(m.birth_date)}</span>
-                        )}
-                      </span>
-                    )}
+                    {(() => { const bd = birthDisplay(m); return bd ? (
+                      <span className={`px-1.5 py-px rounded inline-flex items-center gap-1 ${bd.chip}`}>{bd.text}</span>
+                    ) : null; })()}
                     {m.id_card && <span className="font-mono">{maskIdCard(m.id_card)}</span>}
                   </div>
                 </div>

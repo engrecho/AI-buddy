@@ -3,7 +3,7 @@ import { Switch } from '@/components/ui/switch';
 import { CalendarIcon } from 'lucide-react';
 import {
   lunarDateText, lunarMonthOptions, leapMonthOf, lunarMonthMaxDays,
-  lunarToSolarDate, solarToLunar,
+  lunarToSolarDate, solarToLunar, dayCn,
 } from '@/lib/lunar';
 
 const selectCls =
@@ -41,13 +41,22 @@ export function LunarBirthdayPicker({ value, lunar, onValueChange, onLunarChange
   }, [value, lunar]);
 
   const monthOpts = useMemo(() => lunarMonthOptions(leapMonthOf(Number(ly) || new Date().getFullYear())), [ly]);
-  const maxDay = useMemo(() => lunarMonthMaxDays(Number(ly) || 2026, lm, li), [ly, lm, li]);
+  const maxDay = useMemo(() => lunarMonthMaxDays(Number(ly) || new Date().getFullYear(), lm, li), [ly, lm, li]);
   const days = useMemo(() => Array.from({ length: maxDay }, (_, i) => i + 1), [maxDay]);
 
-  // 某次农历选择变化 → 换算成阳历日期
-  const applyLunar = (year, month, isLeap, day) => {
-    const solar = lunarToSolarDate(Number(year) || new Date().getFullYear(), month, isLeap, day);
+  // 农历选择变化 → 同步内部控件并换算成阳历日期（日超出当月则自动钳制到最大日）
+  const commitLunar = (year, month, isLeap, day) => {
+    const yy = Number(year) || new Date().getFullYear();
+    const safeDay = Math.min(day, lunarMonthMaxDays(yy, month, isLeap));
+    setLy(yy); setLm(month); setLi(isLeap); setLd(safeDay);
+    const solar = lunarToSolarDate(yy, month, isLeap, safeDay);
     if (solar) onValueChange(solar);
+  };
+
+  // 记录法切换到阴历：优先沿用已有阳历，否则按当前默认农历选择立即换算阳历
+  const handleLunarToggle = (v) => {
+    onLunarChange(v);
+    if (v && !value) commitLunar(ly, lm, li, ld);
   };
 
   const currentSolar = lunar && value ? value : '';
@@ -62,7 +71,7 @@ export function LunarBirthdayPicker({ value, lunar, onValueChange, onLunarChange
             {lunar ? '按阴历(农历)记生日，并同时展示对应的阳历日期' : '按阳历(公历)记生日'}
           </div>
         </div>
-        <Switch checked={!!lunar} onCheckedChange={(v) => onLunarChange(v)} />
+        <Switch checked={!!lunar} onCheckedChange={handleLunarToggle} />
       </div>
 
       {lunar ? (
@@ -74,7 +83,7 @@ export function LunarBirthdayPicker({ value, lunar, onValueChange, onLunarChange
               <select
                 className={selectCls}
                 value={ly}
-                onChange={(e) => { const y = Number(e.target.value); setLy(y); applyLunar(y, lm, li, ld); }}
+                onChange={(e) => { const y = Number(e.target.value); commitLunar(y, lm, li, ld); }}
               >
                 {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => 1900 + i)
                   .reverse()
@@ -90,8 +99,7 @@ export function LunarBirthdayPicker({ value, lunar, onValueChange, onLunarChange
                   const val = e.target.value;
                   const leap = val.startsWith('leap-');
                   const m = Number(val.replace('leap-', ''));
-                  setLm(m); setLi(leap);
-                  applyLunar(ly, m, leap, ld);
+                  commitLunar(ly, m, leap, ld);
                 }}
               >
                 {monthOpts.map((o) => (
@@ -106,9 +114,9 @@ export function LunarBirthdayPicker({ value, lunar, onValueChange, onLunarChange
               <select
                 className={selectCls}
                 value={Math.min(ld, maxDay)}
-                onChange={(e) => { const d = Number(e.target.value); setLd(d); applyLunar(ly, lm, li, d); }}
+                onChange={(e) => { const d = Number(e.target.value); commitLunar(ly, lm, li, d); }}
               >
-                {days.map((d) => <option key={d} value={d}>{d < 10 ? '初' + ['','一','二','三','四','五','六','七','八','九'][d] : d === 10 ? '初十' : d === 20 ? '二十' : d === 30 ? '三十' : '廿' + ['','一','二','三','四','五','六','七','八','九'][d - 20]}</option>)}
+                {days.map((d) => <option key={d} value={d}>{dayCn(d)}</option>)}
               </select>
             </div>
           </div>

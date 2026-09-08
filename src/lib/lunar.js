@@ -75,7 +75,7 @@ const MONTH_CN = ['正', '二', '三', '四', '五', '六', '七', '八', '九',
 const NUM_CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 
 function monthCn(n) { return (MONTH_CN[n - 1] || '') + '月'; }
-function dayCn(d) {
+export function dayCn(d) {
   if (!d || d < 1 || d > 30) return '';
   if (d < 10) return '初' + NUM_CN[d];
   if (d === 10) return '初十';
