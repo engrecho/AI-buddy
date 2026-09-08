@@ -3212,10 +3212,30 @@ async function ensureVisitMedicationsTable() {
   `);
 }
 
+// ── health_profiles.member_id 自愈迁移（幂等，启动时执行一次） ──
+// 健康档案「关联家庭成员」依赖该列。生产库可能因历史环境缺少，这里先查
+// information_schema 再加列 + 索引，防止重复 ALTER。
+async function ensureHealthProfileMemberColumn() {
+  const [[{ cnt }]] = await pool.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'health_profiles'
+       AND COLUMN_NAME = 'member_id'`
+  );
+  if (cnt > 0) return;
+  await pool.query(`
+    ALTER TABLE \`health_profiles\`
+      ADD COLUMN \`member_id\` bigint(20) DEFAULT NULL
+        COMMENT '关联的家庭成员ID(health_profiles.id 自关联)' AFTER \`relationship\`,
+      ADD KEY \`idx_health_profiles_member\` (\`member_id\`)
+  `);
+  console.log('health_profiles.member_id column ensured');
+}
+
 // ── 启动服务器 ──────────────────────────────────────────────
-ensureVisitMedicationsTable()
-  .then(() => console.log('visit_medications table ready'))
-  .catch(err => console.error('visit_medications init failed:', err.message))
+Promise.all([ensureVisitMedicationsTable(), ensureHealthProfileMemberColumn()])
+  .then(() => console.log('db schema ready'))
+  .catch(err => console.error('db init failed:', err.message))
   .finally(() => {
     app.listen(PORT, '127.0.0.1', () => {
       console.log(`AI-Buddy API server running on http://127.0.0.1:${PORT}`);

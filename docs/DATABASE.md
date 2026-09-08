@@ -303,7 +303,7 @@ CREATE TABLE `health_profiles` (
 
 - 一个用户可有多个档案（自己、父母、子女）
 - `id_card` / `relationship` 于 2026-09 新增，用于「设置 → 家庭成员」管理与保险「被保人」关联
-- `member_id` 于 2026-09 新增（`health_profiles` 自关联）：健康档案选择家人后绑定，避免重复录入；由一次性迁移脚本 `deploy/once/19-add-health-member-link.sh` 幂等添加
+- `member_id` 于 2026-09 新增（`health_profiles` 自关联）：健康档案选择家人后绑定，避免重复录入；服务启动时在 `server/index.js` 幂等自愈（查 `information_schema` 再加列+索引），另附一次性脚本 `deploy/once/19-add-health-member-link.sh`
 - `birth_lunar` 于 2026-09 新增：标识生日是否按农历记；`birth_date` 统一存公历，需农历展示时前端用 `src/lib/lunar.js` 双向换算（覆盖 1900–2100 年）
 - `birth_date` 后端返回 ISO 字符串（如 `2021-11-14T16:00:00.000Z`），前端用本地时区转换显示
 
