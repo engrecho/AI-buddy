@@ -1247,7 +1247,12 @@ const HealthPage = () => {
             <h1 className="text-base font-semibold">健康档案</h1>
             <Badge variant="secondary" className="text-xs ml-1">{profiles.length}</Badge>
           </div>
-          <span className="text-xs text-gray-400">在「设置 → 家庭成员」中添加家人</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Button size="sm" onClick={() => setProfileDialog({ open: true, initial: null })} className="flex-shrink-0 active:scale-95">
+              <Plus className="w-3.5 h-3.5 mr-1" /> 新增档案
+            </Button>
+            <span className="text-xs text-gray-400 hidden sm:inline">在「设置 → 家庭成员」中添加家人</span>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
@@ -1257,7 +1262,10 @@ const HealthPage = () => {
             <div className="flex flex-col items-center justify-center h-60 text-gray-400">
               <Heart className="w-12 h-12 mb-3 opacity-30" />
               <p className="text-sm mb-3">还没有健康档案</p>
-              <span className="text-xs text-gray-400">在「设置 → 家庭成员」中添加家人</span>
+              <Button size="sm" onClick={() => setProfileDialog({ open: true, initial: null })} className="bg-[#bbea3b] hover:bg-[#a8d435] text-black mb-3">
+                <Plus className="w-4 h-4 mr-1" /> 新增档案
+              </Button>
+              <span className="text-xs text-gray-400">也可在「设置 → 家庭成员」中添加家人</span>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
