@@ -172,6 +172,9 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   const [extractError, setExtractError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const urlFetchedRef = useRef("");
+  // 分类选择：true 时显示「手动输入分类」输入框（iOS 原生 select 不支持 datalist 下拉的建议方案）
+  const [catInputOpen, setCatInputOpen] = useState(false);
+  const [editCatInputOpen, setEditCatInputOpen] = useState(false);
 
   useEffect(() => {
     // 批量获取：一次请求拉取阅读列表 + 标签
@@ -352,6 +355,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
     setFetchingTip("");
     setExtractError("");
     setShareInput("");
+    setCatInputOpen(false);
     setForm({
       url: "", title: "", summary: "", cover_url: "", platform: "web", category: "",
       tags: [], is_read: false, is_starred: false, is_offline: false,
@@ -868,17 +872,51 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
                     </div>
                     <div>
                       <label className="text-sm font-medium mb-1.5 block">分类</label>
-                      <Input
-                        value={form.category || ""}
-                        onChange={(e) => setForm({ ...form, category: e.target.value })}
-                        placeholder="如 article / video / work"
-                        list="reading-category-options"
-                      />
-                      <datalist id="reading-category-options">
-                        {categories.map((c) => (
-                          <option key={c} value={c} />
-                        ))}
-                      </datalist>
+                      {catInputOpen ? (
+                        <div className="space-y-1.5">
+                          <Input
+                            autoFocus
+                            value={form.category || ""}
+                            onChange={(e) => setForm({ ...form, category: e.target.value })}
+                            placeholder="输入新分类名，如：工作 / 学习 / 视频"
+                          />
+                          <div className="flex gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setCatInputOpen(false)}
+                              className="px-2 py-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                            >
+                              使用已有分类
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { if (!(form.category || "").trim()) setForm(f => ({ ...f, category: "未分类" })); setCatInputOpen(false); }}
+                              className="px-2 py-1 rounded text-gray-500 hover:bg-gray-100"
+                            >
+                              完成
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <select
+                          value={form.category && categories.includes(form.category) ? form.category : (form.category || "")}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "__new__") setCatInputOpen(true);
+                            else setForm({ ...form, category: v });
+                          }}
+                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        >
+                          <option value="">未分类</option>
+                          {categories.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                          {form.category && !categories.includes(form.category) && (
+                            <option value={form.category}>当前：{form.category}</option>
+                          )}
+                          <option value="__new__">＋ 新建分类…</option>
+                        </select>
+                      )}
                     </div>
                     <div className="flex items-end">
                       <label className={`flex items-start gap-2 px-3 py-2 rounded-md border w-full cursor-pointer transition-colors ${
@@ -1097,12 +1135,51 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
               </div>
               <div>
                 <label className="text-sm font-medium mb-1.5 block">分类 (category)</label>
-                <Input
-                  value={editForm.category}
-                  onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                  placeholder="work / article / video ..."
-                  list="reading-category-options"
-                />
+                {editCatInputOpen ? (
+                  <div className="space-y-1.5">
+                    <Input
+                      autoFocus
+                      value={editForm.category || ""}
+                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                      placeholder="输入新分类名，如：工作 / 学习 / 视频"
+                    />
+                    <div className="flex gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setEditCatInputOpen(false)}
+                        className="px-2 py-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                      >
+                        使用已有分类
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { if (!(editForm.category || "").trim()) setEditForm(f => ({ ...f, category: "未分类" })); setEditCatInputOpen(false); }}
+                        className="px-2 py-1 rounded text-gray-500 hover:bg-gray-100"
+                      >
+                        完成
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    value={editForm.category && categories.includes(editForm.category) ? editForm.category : (editForm.category || "")}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "__new__") setEditCatInputOpen(true);
+                      else setEditForm({ ...editForm, category: v });
+                    }}
+                    className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  >
+                    <option value="">未分类</option>
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    {editForm.category && !categories.includes(editForm.category) && (
+                      <option value={editForm.category}>当前：{editForm.category}</option>
+                    )}
+                    <option value="__new__">＋ 新建分类…</option>
+                  </select>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 cursor-pointer">
