@@ -371,6 +371,72 @@ app.get('/api/reading/:id/files', authMiddleware, async (req, res) => {
   }
 });
 
+// 重新解析某个阅读链接（单个 id 或批量 ids）。把 title/cover_url/platform/summary 用最新解析结果覆盖。
+app.post('/api/reading/reparse', authMiddleware, async (req, res) => {
+  const { id, ids } = req.body || {};
+  let idList = [];
+  if (ids !== undefined && ids !== null) {
+    // 批量：接受 id 数组，或逗号分隔字符串
+    const raw = Array.isArray(ids) ? ids : String(ids).split(',').map((s) => s.trim());
+    idList = raw.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  } else if (id !== undefined && id !== null) {
+    idList = [Number(id)];
+  }
+  idList = [...new Set(idList)];
+  if (idList.length === 0) {
+    return res.json({ data: null, error: { message: '缺少 id 或 ids 参数' } });
+  }
+
+  try {
+    const results = [];
+    const placeholders = idList.map(() => '?').join(',');
+    const [rows] = await pool.query(
+      `SELECT id, url FROM reading_items WHERE id IN (${placeholders}) AND user_id = ?`,
+      [...idList, req.user.id]
+    );
+    const rowById = new Map(rows.map((r) => [r.id, r]));
+
+    for (const rid of idList) {
+      const row = rowById.get(rid);
+      if (!row) {
+        results.push({ id: rid, ok: false, message: '记录不存在或无权限' });
+        continue;
+      }
+      if (!row.url || !String(row.url).trim()) {
+        results.push({ id: rid, ok: false, message: '该阅读项没有链接，无法解析' });
+        continue;
+      }
+      try {
+        const parsed = await parseShare(row.url);
+        if (parsed.code !== 200) {
+          results.push({ id: rid, ok: false, message: parsed.message || '解析失败' });
+          continue;
+        }
+        const updates = {};
+        if (parsed.title) updates.title = parsed.title;
+        if (parsed.cover_url) updates.cover_url = parsed.cover_url;
+        if (parsed.platform) updates.platform = parsed.platform;
+        if (parsed.summary) updates.summary = parsed.summary;
+        if (Object.keys(updates).length > 0) {
+          const sets = Object.keys(updates).map((k) => `${k} = ?`).join(', ');
+          const vals = Object.values(updates);
+          vals.push(rid, req.user.id);
+          await pool.query(`UPDATE reading_items SET ${sets} WHERE id = ? AND user_id = ?`, vals);
+          results.push({ id: rid, ok: true, updated: updates, message: '解析成功' });
+        } else {
+          results.push({ id: rid, ok: true, updated: {}, message: '解析成功（无可更新字段）' });
+        }
+      } catch (e) {
+        results.push({ id: rid, ok: false, message: e.message });
+      }
+    }
+    return res.json({ data: results, error: null });
+  } catch (err) {
+    console.error('reading/reparse error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // 下载/预览某个离线文件（路径 /api/reading-files/:dirName/:fileName）
 // 鉴权：必须能查到属于该用户，且 offline_path 等于 dirName
 app.get('/api/reading-files/:dirName/:fileName', authMiddleware, async (req, res) => {

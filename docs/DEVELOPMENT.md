@@ -310,6 +310,7 @@ CRUD 行为与 Supabase PostgREST 类似（实际上是为了兼容历史 import
 | GET / POST | `/api/v1/reading` | 阅读列表 / 创建（POST 支持 `category`、`tags`——标签名数组或逗号分隔字符串，服务端自动解析/创建 task_tags 转 ID 存储；GET 支持 `category`、`tag`/`tags` 过滤） |
 | GET | `/api/v1/reading/:id` | 阅读详情 |
 | PATCH | `/api/v1/reading/:id` | 更新阅读项（含 `category`/`tags`，同样支持标签名自动解析） |
+| POST | `/api/reading/reparse`（登录态） | 重新解析阅读链接，body 传 `id` 或 `ids` 数组；逐条调用 `parseShare` 并覆盖 title/cover_url/platform/summary，返回每条结果 `{id, ok, updated, message}` |
 | GET / POST | `/api/v1/quick-notes` | 随记列表 / 创建 |
 | GET | `/api/v1/quick-notes/:id` | 随记详情 |
 

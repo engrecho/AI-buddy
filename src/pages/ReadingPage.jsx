@@ -175,6 +175,10 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   // 分类选择：true 时显示「手动输入分类」输入框（iOS 原生 select 不支持 datalist 下拉的建议方案）
   const [catInputOpen, setCatInputOpen] = useState(false);
   const [editCatInputOpen, setEditCatInputOpen] = useState(false);
+  // 重新解析：reparseIds 记录正在解析的阅读项 id；reparseBusy 表示已有解析任务进行中（禁用其他解析按钮）
+  const [reparseIds, setReparseIds] = useState([]);
+  const [reparseBusy, setReparseBusy] = useState(false);
+  const [reparseHint, setReparseHint] = useState("");
 
   useEffect(() => {
     // 批量获取：一次请求拉取阅读列表 + 标签
@@ -409,6 +413,78 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
       setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_offline: item.is_offline, offline_path: item.offline_path } : it));
       toast.error("操作失败");
     }
+  };
+
+  // ── 重新解析链接（单个 / 批量） ────────────────────────────────
+  // 把 title/cover_url/platform/summary 用最新的解析结果覆盖，用于解析失败或想刷新元信息的场景。
+  const reparseItems = async (ids, { silent = false } = {}) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    setReparseBusy(true);
+    setReparseIds(ids);
+    setReparseHint("");
+    try {
+      const res = await fetch('/api/reading/reparse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ids }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message || '重新解析失败');
+      const results = json.data || [];
+      // 刷新受影响的条目
+      const affected = [...new Set(results.map((r) => r.id))];
+      if (affected.length > 0) {
+        const { data: fresh } = await supabase
+          .from("reading_items")
+          .select('id,url,platform,title,summary,cover_url,category,is_read,is_starred,is_offline,offline_path,tags,created_at')
+          .in("id", affected);
+        if (fresh) {
+          setItems((prev) => prev.map((it) => {
+            const f = fresh.find((x) => String(x.id) === String(it.id));
+            return f ? { ...it, ...f } : it;
+          }));
+        }
+      }
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      if (!silent) {
+        if (failCount === 0) toast.success(`解析完成：成功 ${okCount} 条`);
+        else if (okCount === 0) toast.error(`解析失败：${results.map((r) => r.message).filter(Boolean).join('；')}`);
+        else toast.info(`解析完成：成功 ${okCount} 条，失败 ${failCount} 条`);
+      }
+      if (failCount > 0) {
+        setReparseHint(`共 ${results.length} 条：成功 ${okCount}，失败 ${failCount}。失败原因：${results.filter((r) => !r.ok).map((r) => r.message).join('；')}`);
+      }
+    } catch (e) {
+      toast.error(e.message);
+      setReparseHint(e.message);
+    } finally {
+      setReparseBusy(false);
+      setReparseIds([]);
+    }
+  };
+
+  // 批量解析：对「解析不完整」的条目重新解析（无链接的跳过，需要链接）
+  const handleBatchReparse = async () => {
+    // 判定「解析不完整」：无标题或既无标题又无封面。不强行判定未读，避免误伤。
+    const candidates = items.filter((it) => it.url && it.url.trim() && (!(it.title && it.title.trim()) || !it.cover_url));
+    if (candidates.length === 0) {
+      toast.info("当前没有需要重新解析的条目");
+      return;
+    }
+    const ok = window.confirm(`将对 ${candidates.length} 条「解析不完整」的条目重新解析（覆盖标题/封面/平台/摘要）。是否继续？`);
+    if (!ok) return;
+    await reparseItems(candidates.map((c) => c.id), { silent: false });
+  };
+
+  // 单个重新解析
+  const handleReparseOne = async (item) => {
+    if (!item.url || !item.url.trim()) {
+      toast.error("该条目没有链接，无法解析");
+      return;
+    }
+    await reparseItems([item.id], { silent: false });
   };
 
   // ── 编辑 ────────────────────────────────────────────────────────
@@ -756,7 +832,17 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
             </div>
 
             {/* PC端：添加文章按钮在右上方，移动端：右下角FAB */}
-            <div className="ml-auto flex-shrink-0">
+            <div className="ml-auto flex-shrink-0 flex items-center gap-1.5">
+              <button
+                aria-label="批量重新解析"
+                onClick={handleBatchReparse}
+                disabled={reparseBusy}
+                className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium text-gray-600 border border-gray-200 bg-white hover:bg-gray-100 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                title="对解析不完整的条目重新解析"
+              >
+                {reparseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                批量解析
+              </button>
               <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) resetForm(); }}>
                 <DialogTrigger asChild>
                   <button
@@ -1004,11 +1090,18 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
             </div>
           ) : (
           <div className="flex flex-col divide-y divide-gray-100 bg-white rounded-xl border border-gray-100 overflow-hidden">
+            {reparseHint && (
+              <div className="px-4 py-2.5 text-xs text-amber-700 bg-amber-50 border-b border-amber-100">
+                {reparseHint}
+              </div>
+            )}
             {filteredItems.map((item) => (
               <ArticleRow
                 key={item.id}
                 item={item}
                 tagMap={tagMap}
+                reparseBusy={reparseBusy}
+                reparseIds={reparseIds}
                 onToggleRead={() => toggleRead(item)}
                 onToggleStar={() => toggleStar(item)}
                 onDelete={() => setDeleteConfirmId(item.id)}
@@ -1016,6 +1109,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
                 onCopy={() => handleCopyUrl(item)}
                 onOpenFiles={() => openOfflineFiles(item)}
                 onRemoveOffline={() => handleRemoveOffline(item)}
+                onReparse={() => handleReparseOne(item)}
               />
             ))}
           </div>
@@ -1497,7 +1591,8 @@ function SideItem({ active, onClick, label, count, icon, color }) {
 
 // ── 子组件：文章列表行(列表式展示,头图缩略图在左侧) ──────────────────
 // 布局: 头图(64×44 / 80×56)  |  标题(2行) + 摘要(4行)        |  元信息 + 操作(1行底部)
-function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles, onRemoveOffline }) {
+function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles, onRemoveOffline, onReparse, reparseBusy, reparseIds }) {
+  const isReparsing = reparseBusy && (reparseIds || []).includes(item.id);
   const pm = platformMeta(item.platform);
   const PlatformIcon = pm.Icon;
   return (
@@ -1624,6 +1719,18 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
             {new Date(item.created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
           </span>
           <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button
+              onClick={onReparse}
+              disabled={reparseBusy}
+              className={`p-1 rounded transition-colors disabled:opacity-50 disabled:cursor-wait ${
+                isReparsing
+                  ? "text-indigo-500 bg-indigo-50"
+                  : "text-gray-300 hover:text-emerald-500 hover:bg-emerald-50 active:bg-emerald-100"
+              }`}
+              title={isReparsing ? "正在重新解析…" : "重新解析"}
+            >
+              {isReparsing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            </button>
             <button
               onClick={onCopy}
               className="p-1 rounded text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
