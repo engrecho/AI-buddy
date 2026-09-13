@@ -979,11 +979,19 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
                         onChange={() => toggleVisit(v.id)}
                         className="w-4 h-4 accent-[#bbea3b] flex-shrink-0"
                       />
-                      <span className="flex-1 min-w-0 truncate">
-                        <span className="font-medium">{formatDate(v.visit_date)}</span>
-                        {v.hospital ? <span className="text-gray-500"> · {v.hospital}</span> : null}
-                        {v.department ? <span className="text-gray-400"> · {v.department}</span> : null}
-                      </span>
+                      <div className="flex-1 min-w-0 leading-tight">
+                        {/* 第一行：日期 + 科室（短信息，不会撑爆） */}
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <span className="font-medium text-gray-800">{formatDate(v.visit_date)}</span>
+                          {v.department ? <span className="text-gray-400">· {v.department}</span> : null}
+                        </div>
+                        {/* 第二行：医院名（可能超长，允许换行） */}
+                        {v.hospital ? (
+                          <div className="text-xs text-gray-500 mt-0.5 break-words">
+                            {v.hospital}
+                          </div>
+                        ) : null}
+                      </div>
                       {(v.medications || []).length > 0 && (
                         <span className="text-gray-400 flex-shrink-0">{v.medications.length} 药</span>
                       )}
