@@ -2143,6 +2143,38 @@ app.post('/api/loans/:id/rebuild-schedule', authMiddleware, async (req, res) => 
   }
 });
 
+// 更新贷款元数据（仅元数据，不改还款计划；改还款计划用 rebuild-schedule）
+app.patch('/api/loans/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.json({ data: null, error: { message: 'id 无效' } });
+  try {
+    const [loans] = await pool.query('SELECT * FROM loans WHERE id = ? AND user_id = ? LIMIT 1', [id, req.user.id]);
+    if (loans.length === 0) return res.json({ data: null, error: { message: '贷款不存在' } });
+
+    const ALLOWED = ['name', 'loan_type', 'institution', 'annual_rate', 'repayment_day', 'notes', 'status'];
+    const fields = {};
+    for (const k of ALLOWED) {
+      if (req.body[k] !== undefined) {
+        fields[k] = req.body[k];
+      }
+    }
+    if (Object.keys(fields).length === 0) {
+      return res.json({ data: null, error: { message: '没有可更新的字段' } });
+    }
+
+    const sets = Object.keys(fields).map(k => `${k} = ?`).join(', ');
+    const vals = Object.values(fields);
+    vals.push(id, req.user.id);
+    await pool.query(`UPDATE loans SET ${sets} WHERE id = ? AND user_id = ?`, vals);
+
+    const [rows] = await pool.query('SELECT * FROM loans WHERE id = ? AND user_id = ? LIMIT 1', [id, req.user.id]);
+    return res.json({ data: transformRow('loans', rows[0]), error: null });
+  } catch (err) {
+    console.error('update loan error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // 贷款详情（含还款计划）
 app.get('/api/loans/:id/detail', authMiddleware, async (req, res) => {
   const id = parseInt(req.params.id, 10);
