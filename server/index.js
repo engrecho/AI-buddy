@@ -2066,17 +2066,25 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
   }
 });
 
-// 根据用户传的每期金额数组构建完整 schedule（自动算 due_date，本金/利息按比例拆分）
+// 根据用户传的每期金额数组构建完整 schedule
+// amounts 可以是：纯金额数字数组 [1500, 1500, 2000] → 自动算 due_date
+//                对象数组 [{ amount, due_date }, ...] → 用传的日期
 function buildCustomSchedule(amounts, startDate, repaymentDay) {
   const baseDate = new Date(startDate);
-  const total = amounts.reduce((s, a) => s + Math.abs(parseFloat(a) || 0), 0);
-  // 不拆分 principal/interest，因为是用户自定义的，全部填 0
-  return amounts.map((amt, i) => {
-    const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i + 1, Math.min(repaymentDay, 28));
+  return amounts.map((item, i) => {
+    let dueDateStr, dueAmount;
+    if (item && typeof item === 'object') {
+      dueAmount = parseFloat(item.amount) || 0;
+      dueDateStr = item.due_date;
+    } else {
+      dueAmount = parseFloat(item) || 0;
+      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i + 1, Math.min(repaymentDay, 28));
+      dueDateStr = d.toISOString().slice(0, 10);
+    }
     return {
       installment: i + 1,
-      due_date: dueDate.toISOString().slice(0, 10),
-      due_amount: Math.round(parseFloat(amt) * 100) / 100,
+      due_date: dueDateStr,
+      due_amount: Math.round(dueAmount * 100) / 100,
       principal_amount: 0,
       interest_amount: 0,
       paid_amount: 0,
