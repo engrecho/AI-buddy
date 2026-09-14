@@ -2015,10 +2015,10 @@ function calculatePaymentSchedule(principal, annualRate, termMonths, method, sta
 
 // ── 贷款专用接口 ─────────────────────────────────────────
 
-// 创建贷款 + 自动生成还款计划
+// 创建贷款 + 生成还款计划（支持自定义 schedule）
 app.post('/api/loans/create', authMiddleware, async (req, res) => {
   const { name, loan_type, institution, principal, annual_rate, term_months,
-          repayment_method, start_date, repayment_day, notes } = req.body;
+          repayment_method, start_date, repayment_day, notes, custom_schedule } = req.body;
 
   if (!name || !principal || !term_months || !start_date) {
     return res.json({ data: null, error: { message: '缺少必填字段: name, principal, term_months, start_date' } });
@@ -2036,11 +2036,18 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
 
     const loanId = result.insertId;
 
-    // 自动生成还款计划
-    const schedule = calculatePaymentSchedule(
-      parseFloat(principal), parseFloat(annual_rate || 0), parseInt(term_months),
-      repayment_method || 'equal_payment', start_date, parseInt(repayment_day || 1)
-    );
+    // 生成还款计划
+    let schedule;
+    if (Array.isArray(custom_schedule) && custom_schedule.length > 0) {
+      // 自定义 schedule：前端已算好每期 due_amount
+      schedule = buildCustomSchedule(custom_schedule, start_date, parseInt(repayment_day || 1));
+    } else {
+      // 自动计算
+      schedule = calculatePaymentSchedule(
+        parseFloat(principal), parseFloat(annual_rate || 0), parseInt(term_months),
+        repayment_method || 'equal_payment', start_date, parseInt(repayment_day || 1)
+      );
+    }
 
     for (const p of schedule) {
       await pool.query(
@@ -2055,6 +2062,75 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
     return res.json({ data: { id: loanId, schedule }, error: null });
   } catch (err) {
     console.error('create loan error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 根据用户传的每期金额数组构建完整 schedule（自动算 due_date，本金/利息按比例拆分）
+function buildCustomSchedule(amounts, startDate, repaymentDay) {
+  const baseDate = new Date(startDate);
+  const total = amounts.reduce((s, a) => s + Math.abs(parseFloat(a) || 0), 0);
+  // 不拆分 principal/interest，因为是用户自定义的，全部填 0
+  return amounts.map((amt, i) => {
+    const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i + 1, Math.min(repaymentDay, 28));
+    return {
+      installment: i + 1,
+      due_date: dueDate.toISOString().slice(0, 10),
+      due_amount: Math.round(parseFloat(amt) * 100) / 100,
+      principal_amount: 0,
+      interest_amount: 0,
+      paid_amount: 0,
+      status: 'pending',
+    };
+  });
+}
+
+// 重建还款计划（编辑贷款时用，仅限全部未还款的情况）
+app.post('/api/loans/:id/rebuild-schedule', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.json({ data: null, error: { message: 'id 无效' } });
+
+  try {
+    const [loans] = await pool.query('SELECT * FROM loans WHERE id = ? AND user_id = ? LIMIT 1', [id, req.user.id]);
+    if (loans.length === 0) return res.json({ data: null, error: { message: '贷款不存在' } });
+
+    // 检查是否已有已还款期数
+    const [existing] = await pool.query(
+      "SELECT COUNT(*) as cnt FROM loan_payments WHERE loan_id = ? AND status = 'paid'", [id]
+    );
+    if (existing[0].cnt > 0) {
+      return res.json({ data: null, error: { message: `已有 ${existing[0].cnt} 期还款记录，无法重建还款计划` } });
+    }
+
+    const loan = loans[0];
+    const { custom_schedule } = req.body || {};
+
+    // 重建还款计划
+    let schedule;
+    if (Array.isArray(custom_schedule) && custom_schedule.length > 0) {
+      schedule = buildCustomSchedule(custom_schedule, loan.start_date, loan.repayment_day);
+    } else {
+      schedule = calculatePaymentSchedule(
+        parseFloat(loan.principal), parseFloat(loan.annual_rate || 0), parseInt(loan.term_months),
+        loan.repayment_method || 'equal_payment', loan.start_date, parseInt(loan.repayment_day || 1)
+      );
+    }
+
+    // 删除旧计划，插入新计划
+    await pool.query('DELETE FROM loan_payments WHERE loan_id = ?', [id]);
+    for (const p of schedule) {
+      await pool.query(
+        `INSERT INTO loan_payments (user_id, loan_id, installment, due_date, due_amount,
+          principal_amount, interest_amount, paid_amount, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pending')`,
+        [req.user.id, id, p.installment, p.due_date, p.due_amount,
+         p.principal_amount, p.interest_amount]
+      );
+    }
+
+    return res.json({ data: { id, schedule }, error: null });
+  } catch (err) {
+    console.error('rebuild schedule error:', err);
     return res.json({ data: null, error: { message: err.message } });
   }
 });

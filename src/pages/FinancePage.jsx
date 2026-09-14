@@ -71,12 +71,16 @@ function daysUntil(dateStr) {
 }
 
 // ── 贷款表单 ────────────────────────────────────────────────
-function LoanFormDialog({ open, onClose, onSubmit, initial }) {
+function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
   const [form, setForm] = useState({
     name: '', loan_type: 'other', institution: '', principal: '',
     annual_rate: '', term_months: '', repayment_method: 'equal_payment',
     start_date: new Date().toISOString().slice(0, 10), repayment_day: 1, notes: '',
   });
+  // 还款计划模式：auto（自动计算）| manual（手动录入）
+  const [scheduleMode, setScheduleMode] = useState('auto');
+  // 手动模式的每期金额数组（字符串方便输入）
+  const [manualAmounts, setManualAmounts] = useState([]);
 
   useEffect(() => {
     if (initial) {
@@ -92,38 +96,107 @@ function LoanFormDialog({ open, onClose, onSubmit, initial }) {
         repayment_day: initial.repayment_day || 1,
         notes: initial.notes || '',
       });
+      // 编辑时，用已有还款计划回填手动金额
+      if (Array.isArray(initialPayments) && initialPayments.length > 0) {
+        setManualAmounts(initialPayments.map(p => String(p.due_amount)));
+      }
     } else {
       setForm({
         name: '', loan_type: 'other', institution: '', principal: '',
         annual_rate: '', term_months: '', repayment_method: 'equal_payment',
         start_date: new Date().toISOString().slice(0, 10), repayment_day: 1, notes: '',
       });
+      setManualAmounts([]);
     }
-  }, [initial, open]);
+    setScheduleMode('auto');
+  }, [initial, open, initialPayments]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const middleCount = (n) => n > 1 ? n - 1 : 0;
+
+  const fillDefaultManual = () => {
+    const n = parseInt(form.term_months) || 0;
+    if (n > 0) setManualAmounts(Array(n).fill(''));
+  };
+
+  // 当 term_months 变化时，同步手动模式的期数
+  useEffect(() => {
+    const n = parseInt(form.term_months) || 0;
+    if (scheduleMode !== 'manual' || n === 0) return;
+    setManualAmounts(prev => {
+      if (prev.length === n) return prev;
+      const next = [...prev];
+      if (next.length < n) {
+        while (next.length < n) next.push('');
+      } else {
+        next.length = n;
+      }
+      return next;
+    });
+  }, [form.term_months, scheduleMode]);
+
+  // 快捷填充：中间 N 期都是 X 元，最后一期单独 Y 元
+  const fillPattern = (middleCount, middleAmount, lastAmount) => {
+    const n = parseInt(form.term_months) || 0;
+    if (n === 0) return;
+    const result = [];
+    for (let i = 0; i < n - 1; i++) result.push(String(middleAmount || ''));
+    if (lastAmount !== undefined && n > 0) result.push(String(lastAmount || ''));
+    setManualAmounts(result);
+  };
+
+  const updateAmount = (idx, val) => {
+    setManualAmounts(prev => {
+      const next = [...prev];
+      next[idx] = val;
+      return next;
+    });
+  };
+
+  const totalManual = manualAmounts.reduce((s, a) => s + (parseFloat(a) || 0), 0);
+  const principalNum = parseFloat(form.principal) || 0;
+  const totalDiff = principalNum ? (totalManual - principalNum) : 0;
 
   const handleSubmit = () => {
     if (!form.name.trim()) { toast.error('请输入贷款名称'); return; }
     if (!form.principal || parseFloat(form.principal) <= 0) { toast.error('请输入有效的本金'); return; }
     if (!form.term_months || parseInt(form.term_months) <= 0) { toast.error('请输入有效的期数'); return; }
     if (!form.start_date) { toast.error('请选择放款日'); return; }
-    onSubmit({
+
+    const payload = {
       ...form,
       principal: parseFloat(form.principal),
       annual_rate: parseFloat(form.annual_rate) || 0,
       term_months: parseInt(form.term_months),
       repayment_day: parseInt(form.repayment_day) || 1,
-    });
+    };
+
+    if (scheduleMode === 'manual') {
+      // 校验手动金额
+      const amounts = manualAmounts.map(a => parseFloat(a)).filter(a => a > 0);
+      if (amounts.length !== manualAmounts.length) {
+        toast.error('请为每期都填写还款金额'); return;
+      }
+      if (amounts.length === 0) { toast.error('请至少填写一期金额'); return; }
+      // 警告但不阻止：总金额 < 本金（用户可能是故意的）
+      if (totalManual < principalNum && principalNum > 0) {
+        if (!confirm(`所有期数合计 ${formatMoney(totalManual)}，小于本金 ${formatMoney(principalNum)}，确定要这样吗？`)) return;
+      }
+      payload.custom_schedule = manualAmounts.map(a => parseFloat(a));
+    }
+
+    onSubmit(payload);
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{initial ? '编辑贷款' : '新增贷款'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 py-2 max-h-[60vh] overflow-y-auto">
+        <div className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-1">
+          {/* 基础信息 */}
           <div>
             <label className="text-xs text-gray-500 mb-1 block">贷款名称 *</label>
             <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="如：房贷、车贷" />
@@ -178,6 +251,132 @@ function LoanFormDialog({ open, onClose, onSubmit, initial }) {
               <Input type="number" min="1" max="28" value={form.repayment_day} onChange={e => set('repayment_day', e.target.value)} />
             </div>
           </div>
+
+          {/* 还款计划模式切换 */}
+          <div className="pt-3 border-t border-gray-100">
+            <label className="text-xs text-gray-600 font-medium mb-2 block">还款计划</label>
+            <div className="flex gap-2 p-1 bg-gray-50 rounded-lg text-sm">
+              <button
+                type="button"
+                onClick={() => setScheduleMode('auto')}
+                className={`flex-1 py-1.5 rounded-md font-medium transition-colors ${scheduleMode === 'auto' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                自动计算
+              </button>
+              <button
+                type="button"
+                onClick={() => { setScheduleMode('manual'); if (!initialPayments || initialPayments.length === 0) fillDefaultManual(); }}
+                className={`flex-1 py-1.5 rounded-md font-medium transition-colors ${scheduleMode === 'manual' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                手动录入
+              </button>
+            </div>
+
+            {scheduleMode === 'auto' && (
+              <p className="text-xs text-gray-400 mt-2">
+                根据本金、利率、期数和还款方式自动生成每期金额
+              </p>
+            )}
+
+            {scheduleMode === 'manual' && (
+              <div className="mt-3 space-y-3">
+                {/* 快捷填充 */}
+                <div className="p-3 bg-indigo-50 rounded-lg space-y-2">
+                  <div className="text-xs font-medium text-indigo-700">快捷填充</div>
+                  <div className="text-[11px] text-indigo-600">
+                    规则：{middleCount(manualAmounts.length) || '?'} 期相同金额 + 最后一期不同
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] text-gray-500 mb-0.5 block">中间每期金额</label>
+                      <Input
+                        type="number"
+                        placeholder="如：1500"
+                        onChange={e => {
+                          const n = parseInt(form.term_months) || 0;
+                          if (n > 1) fillPattern(n - 1, e.target.value, manualAmounts[n - 1] || '');
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500 mb-0.5 block">最后一期金额</label>
+                      <Input
+                        type="number"
+                        placeholder="如：2000"
+                        onChange={e => {
+                          const n = parseInt(form.term_months) || 0;
+                          setManualAmounts(prev => {
+                            const next = [...prev];
+                            if (next.length < n) {
+                              while (next.length < n) next.push(next[next.length - 1] || '');
+                            }
+                            next[n - 1] = e.target.value;
+                            return next;
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // 一键按剩余金额填最后一期
+                      const n = parseInt(form.term_months) || 0;
+                      if (n < 2) return;
+                      const middleAmt = parseFloat(manualAmounts[0]) || 0;
+                      if (middleAmt <= 0) { toast.error('请先填中间每期金额'); return; }
+                      const totalMiddle = middleAmt * (n - 1);
+                      const principal = parseFloat(form.principal) || 0;
+                      const last = Math.max(0, principal - totalMiddle);
+                      setManualAmounts(prev => {
+                        const next = prev.map(() => String(middleAmt));
+                        next[n - 1] = String(Math.round(last * 100) / 100);
+                        return next;
+                      });
+                    }}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 underline"
+                  >
+                    根据本金反推最后一期 = 本金 - 中间总金额
+                  </button>
+                </div>
+
+                {/* 汇总提示 */}
+                <div className="flex items-center justify-between text-xs px-2">
+                  <span className="text-gray-500">
+                    {manualAmounts.filter(a => parseFloat(a) > 0).length} / {manualAmounts.length} 期已填
+                  </span>
+                  <span className={`font-medium ${totalDiff < -0.5 ? 'text-red-500' : totalDiff > 0.5 ? 'text-amber-600' : 'text-green-600'}`}>
+                    合计 {formatMoney(totalManual)}
+                    {principalNum > 0 && (
+                      <span className="ml-1 text-gray-400 font-normal">
+                        (本金 {formatMoney(principalNum)})
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {/* 每期金额输入列表 */}
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-100 p-2 space-y-1">
+                  {manualAmounts.map((amt, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className={`w-14 flex-shrink-0 ${i === manualAmounts.length - 1 ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+                        {i === manualAmounts.length - 1 ? '末期' : `第 ${i + 1} 期`}
+                      </span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={amt}
+                        onChange={e => updateAmount(i, e.target.value)}
+                        placeholder="金额"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="text-xs text-gray-500 mb-1 block">备注</label>
             <Textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} />
@@ -425,6 +624,7 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLoan, setEditingLoan] = useState(null);
+  const [editingPayments, setEditingPayments] = useState(null);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [loanDetail, setLoanDetail] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -468,7 +668,8 @@ export default function FinancePage() {
         body: JSON.stringify(formData),
       });
       if (data.data) {
-        toast.success('贷款创建成功，还款计划已自动生成');
+        const isCustom = Array.isArray(formData.custom_schedule);
+        toast.success(isCustom ? '贷款创建成功，自定义还款计划已保存' : '贷款创建成功，还款计划已自动生成');
         setDialogOpen(false);
         loadLoans();
       } else {
@@ -482,21 +683,60 @@ export default function FinancePage() {
   const handleUpdate = async (formData) => {
     if (!editingLoan) return;
     try {
-      const data = await api(`/api/loans?filter=eq:id:${editingLoan.id}`, {
+      // 1) 先更新 loans 表基础字段（排除 custom_schedule）
+      const { custom_schedule, ...loanFields } = formData;
+      const patchData = await api(`/api/loans?filter=eq:id:${editingLoan.id}`, {
         method: 'PATCH',
-        body: JSON.stringify(formData),
+        body: JSON.stringify(loanFields),
       });
-      if (data.data !== null) {
-        toast.success('已保存');
-        setDialogOpen(false);
-        setEditingLoan(null);
-        loadLoans();
-      } else {
-        toast.error(data.error?.message || '保存失败');
+      if (patchData.data === null && patchData.error) {
+        toast.error(patchData.error.message || '保存失败');
+        return;
       }
+
+      // 2) 如果有 custom_schedule（手动模式），重建还款计划
+      if (Array.isArray(custom_schedule) && custom_schedule.length > 0) {
+        const rebuildData = await api(`/api/loans/${editingLoan.id}/rebuild-schedule`, {
+          method: 'POST',
+          body: JSON.stringify({ custom_schedule }),
+        });
+        if (rebuildData.error) {
+          toast.error(rebuildData.error.message);
+          setDialogOpen(false);
+          setEditingLoan(null);
+          loadLoans();
+          return;
+        }
+      }
+
+      toast.success('已保存');
+      setDialogOpen(false);
+      setEditingLoan(null);
+      setEditingPayments(null);
+      loadLoans();
     } catch {
       toast.error('保存失败');
     }
+  };
+
+  // 打开编辑对话框，先加载还款计划
+  const openLoanEdit = async (loan) => {
+    setEditingLoan(loan);
+    setEditingPayments(null);
+    setDialogOpen(true);
+    try {
+      const data = await api(`/api/loans/${loan.id}/detail`);
+      if (data.data && Array.isArray(data.data.payments)) {
+        setEditingPayments(data.data.payments);
+      }
+    } catch { /* 加载失败没关系，手动模式下数组为空 */ }
+  };
+
+  // 打开新建对话框
+  const openLoanCreate = () => {
+    setEditingLoan(null);
+    setEditingPayments(null);
+    setDialogOpen(true);
   };
 
   const handleDelete = async () => {
@@ -847,7 +1087,7 @@ export default function FinancePage() {
                 <Wallet className="w-5 h-5" style={{ color: '#5a7a00' }} />
                 <h2 className="text-lg font-bold text-gray-800">贷款管理</h2>
               </div>
-              <Button size="sm" onClick={() => { setEditingLoan(null); setDialogOpen(true); }} style={{ backgroundColor: '#5a7a00' }} className="text-white hover:opacity-90">
+              <Button size="sm" onClick={openLoanCreate} style={{ backgroundColor: '#5a7a00' }} className="text-white hover:opacity-90">
                 <Plus className="w-4 h-4" /> 新增贷款
               </Button>
             </div>
@@ -883,7 +1123,7 @@ export default function FinancePage() {
                         <div className="text-xs text-gray-400">{loan.institution || '—'}</div>
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
-                        <button onClick={(e) => { e.stopPropagation(); setEditingLoan(loan); setDialogOpen(true); }}
+                        <button onClick={(e) => { e.stopPropagation(); openLoanEdit(loan); }}
                           className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                           <Wallet className="w-3.5 h-3.5" />
                         </button>
@@ -949,9 +1189,10 @@ export default function FinancePage() {
         <>
           <LoanFormDialog
             open={dialogOpen}
-            onClose={() => { setDialogOpen(false); setEditingLoan(null); }}
+            onClose={() => { setDialogOpen(false); setEditingLoan(null); setEditingPayments(null); }}
             onSubmit={editingLoan ? handleUpdate : handleCreate}
             initial={editingLoan}
+            initialPayments={editingPayments}
           />
           <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
             <AlertDialogContent>
