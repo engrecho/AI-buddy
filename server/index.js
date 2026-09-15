@@ -1965,46 +1965,96 @@ app.post('/api/health/medication-visits', authMiddleware, async (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 // ── 还款计划计算工具 ─────────────────────────────────────
+const LOAN_MAX_TERM = 600; // 单笔贷款期数上限，防止超大期数拖垮事件循环
+
+function validateLoanInputs({ principal, annual_rate, term_months, repayment_day, method }) {
+  const p = parseFloat(principal);
+  const r = annual_rate === '' || annual_rate == null ? 0 : parseFloat(annual_rate);
+  const n = parseInt(term_months, 10);
+  const day = parseInt(repayment_day, 10);
+  const errs = [];
+  if (!Number.isFinite(p) || p <= 0) errs.push('本金必须为正数');
+  if (!Number.isFinite(r) || r < 0 || r > 100) errs.push('年利率须在 0~100 之间');
+  if (!Number.isInteger(n) || n <= 0 || n > LOAN_MAX_TERM) errs.push(`期数须为 1~${LOAN_MAX_TERM} 的整数`);
+  if (!Number.isInteger(day) || day < 1 || day > 28) errs.push('每月还款日须为 1~28');
+  if (method && !['equal_payment', 'equal_principal'].includes(method)) errs.push('还款方式无效');
+  return { p, r, n, day, errs };
+}
+
+function validateCustomSchedule(amounts, termMonths) {
+  if (!Array.isArray(amounts) || amounts.length === 0) return '还款计划不能为空';
+  if (amounts.length > LOAN_MAX_TERM) return `期数不能超过 ${LOAN_MAX_TERM}`;
+  if (Number.isInteger(termMonths) && amounts.length !== termMonths) {
+    return `每期金额数量(${amounts.length})与期数(${termMonths})不一致`;
+  }
+  for (const a of amounts) {
+    const v = parseFloat(a);
+    if (!Number.isFinite(v) || v <= 0) return '每期金额必须为正数';
+  }
+  return null;
+}
+
+// 批量插入还款计划（多行 VALUES，避免逐条往返）
+async function batchInsertPayments(conn, userId, loanId, schedule) {
+  const BATCH = 100;
+  for (let i = 0; i < schedule.length; i += BATCH) {
+    const chunk = schedule.slice(i, i + BATCH);
+    const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, 0, 'pending')").join(', ');
+    await conn.query(
+      `INSERT INTO loan_payments (user_id, loan_id, installment, due_date, due_amount,
+        principal_amount, interest_amount, paid_amount, status)
+       VALUES ${placeholders}`,
+      chunk.flatMap(p => [userId, loanId, p.installment, p.due_date, p.due_amount,
+        p.principal_amount, p.interest_amount])
+    );
+  }
+}
+
+// O(n) 计算还款计划：滚动维护剩余本金，末期吸收累计舍入误差，保证本金合计恰等于本金
 function calculatePaymentSchedule(principal, annualRate, termMonths, method, startDate, repaymentDay) {
   const monthlyRate = annualRate / 12 / 100;
-  const schedule = [];
   const baseDate = new Date(startDate);
+  const isEqualPayment = method === 'equal_payment' && monthlyRate > 0;
+  const factor = isEqualPayment ? Math.pow(1 + monthlyRate, termMonths) : 0;
+  const dueAmountFull = isEqualPayment ? (principal * monthlyRate * factor) / (factor - 1) : 0;
+  const perPeriodPrincipal = principal / termMonths;
+  const round2 = (v) => Math.round(v * 100) / 100;
+  const schedule = [];
+  let remaining = principal;   // 未舍入的剩余本金，用于计算利息
+  let storedPrincipal = 0;     // 已入表（四舍五入后）的本金合计，末期据此校准
 
   for (let i = 1; i <= termMonths; i++) {
     const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, Math.min(repaymentDay, 28));
-    let principalAmount, interestAmount, dueAmount;
+    const isLast = i === termMonths;
+    let principalAmount, interestAmount;
 
-    if (method === 'equal_principal') {
-      // 等额本金
-      principalAmount = principal / termMonths;
-      interestAmount = (principal - principalAmount * (i - 1)) * monthlyRate;
-      dueAmount = principalAmount + interestAmount;
+    if (isEqualPayment) {
+      // 等额本息：每期金额固定，本金 = 每期金额 - 当期利息
+      interestAmount = remaining * monthlyRate;
+      principalAmount = dueAmountFull - interestAmount;
     } else {
-      // 等额本息（默认）
-      if (monthlyRate === 0) {
-        dueAmount = principal / termMonths;
-        principalAmount = dueAmount;
-        interestAmount = 0;
-      } else {
-        const factor = Math.pow(1 + monthlyRate, termMonths);
-        dueAmount = principal * monthlyRate * factor / (factor - 1);
-        // 计算第 i 期的本金和利息
-        let remaining = principal;
-        for (let j = 1; j < i; j++) {
-          const interest = remaining * monthlyRate;
-          remaining -= (dueAmount - interest);
-        }
-        interestAmount = remaining * monthlyRate;
-        principalAmount = dueAmount - interestAmount;
-      }
+      // 等额本金 / 零利率：本金按期均摊
+      principalAmount = perPeriodPrincipal;
+      interestAmount = remaining * monthlyRate;
     }
+    remaining -= principalAmount;
+
+    if (isLast) {
+      // 末期校准：把累计舍入误差全部吸收进末期本金，确保 本金合计 === 本金
+      principalAmount = round2(principal - storedPrincipal);
+      interestAmount = round2(interestAmount);
+    } else {
+      principalAmount = round2(principalAmount);
+      interestAmount = round2(interestAmount);
+    }
+    storedPrincipal += principalAmount;
 
     schedule.push({
       installment: i,
       due_date: dueDate.toISOString().slice(0, 10),
-      due_amount: Math.round(dueAmount * 100) / 100,
-      principal_amount: Math.round(principalAmount * 100) / 100,
-      interest_amount: Math.round(interestAmount * 100) / 100,
+      due_amount: round2(principalAmount + interestAmount),
+      principal_amount: principalAmount,
+      interest_amount: interestAmount,
       paid_amount: 0,
       paid_date: null,
       status: 'pending',
@@ -2020,18 +2070,26 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
   const { name, loan_type, institution, principal, annual_rate, term_months,
           repayment_method, start_date, repayment_day, notes, custom_schedule } = req.body;
 
-  if (!name || !principal || !term_months || !start_date) {
-    return res.json({ data: null, error: { message: '缺少必填字段: name, principal, term_months, start_date' } });
+  if (!name || !String(name).trim()) {
+    return res.json({ data: null, error: { message: '缺少必填字段: name' } });
+  }
+  if (!start_date) {
+    return res.json({ data: null, error: { message: '缺少必填字段: start_date' } });
+  }
+  const v = validateLoanInputs({ principal, annual_rate, term_months, repayment_day, method: repayment_method });
+  if (v.errs.length > 0) {
+    return res.json({ data: null, error: { message: v.errs.join('；') } });
   }
 
+  const conn = await pool.getConnection();
   try {
-    const [result] = await pool.query(
+    await conn.beginTransaction();
+    const [result] = await conn.query(
       `INSERT INTO loans (user_id, name, loan_type, institution, principal, annual_rate,
         term_months, repayment_method, start_date, repayment_day, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, name, loan_type || 'other', institution || null, principal,
-       annual_rate || 0, term_months, repayment_method || 'equal_payment',
-       start_date, repayment_day || 1, notes || null]
+      [req.user.id, String(name).trim(), loan_type || 'other', institution || null, v.p,
+       v.r, v.n, repayment_method || 'equal_payment', start_date, v.day, notes || null]
     );
 
     const loanId = result.insertId;
@@ -2039,30 +2097,27 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
     // 生成还款计划
     let schedule;
     if (Array.isArray(custom_schedule) && custom_schedule.length > 0) {
+      const err = validateCustomSchedule(custom_schedule, v.n);
+      if (err) {
+        await conn.rollback();
+        return res.json({ data: null, error: { message: err } });
+      }
       // 自定义 schedule：前端已算好每期 due_amount
-      schedule = buildCustomSchedule(custom_schedule, start_date, parseInt(repayment_day || 1));
+      schedule = buildCustomSchedule(custom_schedule, start_date, v.day);
     } else {
       // 自动计算
-      schedule = calculatePaymentSchedule(
-        parseFloat(principal), parseFloat(annual_rate || 0), parseInt(term_months),
-        repayment_method || 'equal_payment', start_date, parseInt(repayment_day || 1)
-      );
+      schedule = calculatePaymentSchedule(v.p, v.r, v.n, repayment_method || 'equal_payment', start_date, v.day);
     }
 
-    for (const p of schedule) {
-      await pool.query(
-        `INSERT INTO loan_payments (user_id, loan_id, installment, due_date, due_amount,
-          principal_amount, interest_amount, paid_amount, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pending')`,
-        [req.user.id, loanId, p.installment, p.due_date, p.due_amount,
-         p.principal_amount, p.interest_amount]
-      );
-    }
-
+    await batchInsertPayments(conn, req.user.id, loanId, schedule);
+    await conn.commit();
     return res.json({ data: { id: loanId, schedule }, error: null });
   } catch (err) {
+    await conn.rollback();
     console.error('create loan error:', err);
     return res.json({ data: null, error: { message: err.message } });
+  } finally {
+    conn.release();
   }
 });
 
@@ -2116,27 +2171,35 @@ app.post('/api/loans/:id/rebuild-schedule', authMiddleware, async (req, res) => 
     // 重建还款计划
     let schedule;
     if (Array.isArray(custom_schedule) && custom_schedule.length > 0) {
+      const err = validateCustomSchedule(custom_schedule, loan.term_months);
+      if (err) return res.json({ data: null, error: { message: err } });
       schedule = buildCustomSchedule(custom_schedule, loan.start_date, loan.repayment_day);
     } else {
-      schedule = calculatePaymentSchedule(
-        parseFloat(loan.principal), parseFloat(loan.annual_rate || 0), parseInt(loan.term_months),
-        loan.repayment_method || 'equal_payment', loan.start_date, parseInt(loan.repayment_day || 1)
-      );
+      const v = validateLoanInputs({
+        principal: loan.principal, annual_rate: loan.annual_rate,
+        term_months: loan.term_months, repayment_day: loan.repayment_day,
+        method: loan.repayment_method,
+      });
+      if (v.errs.length > 0) {
+        return res.json({ data: null, error: { message: '贷款数据无效：' + v.errs.join('；') } });
+      }
+      schedule = calculatePaymentSchedule(v.p, v.r, v.n, loan.repayment_method || 'equal_payment', loan.start_date, v.day);
     }
 
-    // 删除旧计划，插入新计划
-    await pool.query('DELETE FROM loan_payments WHERE loan_id = ?', [id]);
-    for (const p of schedule) {
-      await pool.query(
-        `INSERT INTO loan_payments (user_id, loan_id, installment, due_date, due_amount,
-          principal_amount, interest_amount, paid_amount, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pending')`,
-        [req.user.id, id, p.installment, p.due_date, p.due_amount,
-         p.principal_amount, p.interest_amount]
-      );
+    // 删除旧计划，插入新计划（同一事务，失败不留脏数据）
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('DELETE FROM loan_payments WHERE loan_id = ?', [id]);
+      await batchInsertPayments(conn, req.user.id, id, schedule);
+      await conn.commit();
+      return res.json({ data: { id, schedule }, error: null });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
-
-    return res.json({ data: { id, schedule }, error: null });
   } catch (err) {
     console.error('rebuild schedule error:', err);
     return res.json({ data: null, error: { message: err.message } });
@@ -2199,12 +2262,21 @@ app.get('/api/loans/:id/detail', authMiddleware, async (req, res) => {
     const paidCount = loan.payments.filter(p => p.status === 'paid').length;
     const totalPaid = loan.payments.reduce((sum, p) => sum + parseFloat(p.paid_amount || 0), 0);
     const totalInterest = loan.payments.reduce((sum, p) => sum + parseFloat(p.interest_amount || 0), 0);
+    // 已还本金：优先取逐期本金；自定义计划本金为 0 时退回实付金额
+    const principalPaid = loan.payments
+      .filter(p => p.status === 'paid')
+      .reduce((sum, p) => sum + (parseFloat(p.principal_amount) > 0 ? parseFloat(p.principal_amount) : parseFloat(p.paid_amount) || 0), 0);
+    const remainingPrincipal = Math.max(0, Math.round((parseFloat(loan.principal) - principalPaid) * 100) / 100);
+    const nextPayment = loan.payments.find(p => p.status === 'pending') || null;
     loan.summary = {
       total_installments: loan.payments.length,
       paid_installments: paidCount,
       remaining_installments: loan.payments.length - paidCount,
       total_paid: Math.round(totalPaid * 100) / 100,
       total_interest: Math.round(totalInterest * 100) / 100,
+      remaining_principal: remainingPrincipal,
+      next_due_amount: nextPayment ? Math.round(parseFloat(nextPayment.due_amount) * 100) / 100 : 0,
+      next_due_date: nextPayment ? nextPayment.due_date : null,
     };
 
     return res.json({ data: loan, error: null });
@@ -2267,14 +2339,28 @@ app.get('/api/loans/summary', authMiddleware, async (req, res) => {
       [req.user.id]
     );
 
+    // 已逾期未还（应还日在今天之前仍为 pending）
+    const [overdue] = await pool.query(
+      `SELECT lp.*, l.name as loan_name FROM loan_payments lp
+       JOIN loans l ON lp.loan_id = l.id
+       WHERE lp.user_id = ? AND lp.status = 'pending'
+       AND lp.due_date < CURDATE()
+       ORDER BY lp.due_date ASC`,
+      [req.user.id]
+    );
+
     const monthTotal = monthPayments.reduce((s, p) => s + parseFloat(p.due_amount || 0), 0);
+    const overdueTotal = overdue.reduce((s, p) => s + parseFloat(p.due_amount || 0), 0);
 
     return res.json({
       data: {
         month_payments: monthPayments.map(p => transformRow('loan_payments', p)),
         upcoming_payments: upcoming.map(p => transformRow('loan_payments', p)),
+        overdue_payments: overdue.map(p => transformRow('loan_payments', p)),
         month_total: Math.round(monthTotal * 100) / 100,
         month_count: monthPayments.length,
+        overdue_total: Math.round(overdueTotal * 100) / 100,
+        overdue_count: overdue.length,
       },
       error: null,
     });

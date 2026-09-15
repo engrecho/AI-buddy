@@ -694,16 +694,38 @@ export default function FinancePage() {
         return;
       }
 
-      // 2) 如果有 custom_schedule（手动模式），重建还款计划
-      if (Array.isArray(custom_schedule) && custom_schedule.length > 0) {
+      // 2) 判断是否需要重建还款计划：手动模式，或修改了影响计划的字段
+      const scheduleFields = ['principal', 'annual_rate', 'term_months', 'repayment_method', 'start_date', 'repayment_day'];
+      const normDate = v => v ? String(v).slice(0, 10) : '';
+      const changed = (a, b) => {
+        if (a == null && b == null) return false;
+        if (a == null || b == null) return true;
+        if (typeof a === 'number' || typeof b === 'number') return Number(a) !== Number(b);
+        return String(a).trim() !== String(b).trim();
+      };
+      const needsRebuild = Array.isArray(custom_schedule) || scheduleFields.some(k =>
+        k === 'start_date' ? normDate(formData[k]) !== normDate(editingLoan[k]) : changed(formData[k], editingLoan[k])
+      );
+
+      if (needsRebuild) {
+        const hasPaid = Array.isArray(editingPayments) && editingPayments.some(p => p.status === 'paid');
+        if (hasPaid) {
+          toast.error('已有还款记录，不能修改本金/利率/期数等影响还款计划的字段');
+          setDialogOpen(false);
+          setEditingLoan(null);
+          setEditingPayments(null);
+          loadLoans();
+          return;
+        }
         const rebuildData = await api(`/api/loans/${editingLoan.id}/rebuild-schedule`, {
           method: 'POST',
-          body: JSON.stringify({ custom_schedule }),
+          body: JSON.stringify(Array.isArray(custom_schedule) ? { custom_schedule } : {}),
         });
         if (rebuildData.error) {
           toast.error(rebuildData.error.message);
           setDialogOpen(false);
           setEditingLoan(null);
+          setEditingPayments(null);
           loadLoans();
           return;
         }
