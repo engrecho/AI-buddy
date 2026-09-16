@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft, User as UserIcon, Lock, Key, Users, Tag, FolderOpen,
   Save, LogOut, Copy, Trash2, Plus, Eye, EyeOff, AlertTriangle,
-  CheckCircle2, Loader2, Camera, ChevronRight, HeartPulse,
+  CheckCircle2, Loader2, Camera, ChevronRight, HeartPulse, Info,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ const SECTIONS = [
   { id: 'family', label: '家庭成员', icon: HeartPulse },
   { id: 'tags', label: '标签', icon: Tag },
   { id: 'groups', label: '分组', icon: FolderOpen },
+  { id: 'about', label: '版本信息', icon: Info },
 ];
 
 export function SettingsCenter({ onBack, defaultSection = null }) {
@@ -109,6 +110,7 @@ export function SettingsCenter({ onBack, defaultSection = null }) {
     if (section === 'family') return <FamilyMembersPanel />;
     if (section === 'tags') return <TagsPanel />;
     if (section === 'groups') return <GroupsPanel />;
+    if (section === 'about') return <AboutPanel />;
     return null;
   }
 }
@@ -171,6 +173,7 @@ function MobileSectionContent({ section, user, login }) {
   if (section === 'family') return <FamilyMembersPanel />;
   if (section === 'tags') return <TagsPanel />;
   if (section === 'groups') return <GroupsPanel />;
+  if (section === 'about') return <AboutPanel />;
   return null;
 }
 
@@ -464,6 +467,67 @@ function ApiKeyPanel() {
       <div className='text-[11px] text-gray-500 leading-relaxed p-3 bg-blue-50 border border-blue-200 rounded-lg'>
         <strong className='text-blue-900'>用法：</strong>创建后保存到工具配置文件（如 <code className='bg-white px-1 rounded'>~/.buddy-skill/config.json</code>），请求时在 Header 携带 <code className='bg-white px-1 rounded'>X-API-Key: 你的Key</code>。
       </div>
+    </div>
+  );
+}
+
+// ── 版本信息面板 ────────────────────────────────────────────────
+function AboutPanel() {
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/version');
+        const json = await res.json();
+        if (json.data) setInfo(json.data);
+      } catch (e) { console.error('加载版本信息失败', e); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  const fmt = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? String(iso) : d.toLocaleString('zh-CN', { hour12: false });
+  };
+
+  return (
+    <div className='space-y-4'>
+      <div className='bg-white rounded-xl p-4 border border-gray-100 space-y-3'>
+        <div className='flex items-center gap-2 pb-1'>
+          <Info className='h-4 w-4' style={{ color: '#5a7a00' }} />
+          <span className='font-medium text-gray-900'>版本信息</span>
+        </div>
+        {loading ? (
+          <div className='text-xs text-gray-500 py-4 text-center'>加载中...</div>
+        ) : info ? (
+          <>
+            <div className='flex justify-between items-center py-2 border-b border-gray-50'>
+              <span className='text-sm text-gray-500'>版本号</span>
+              <span className='text-sm font-semibold text-gray-900'>{info.version || '—'}</span>
+            </div>
+            <div className='flex justify-between items-center py-2 border-b border-gray-50'>
+              <span className='text-sm text-gray-500'>最近提交</span>
+              <code className='text-xs font-mono text-gray-800 bg-gray-100 px-2 py-0.5 rounded'>{info.commit || '—'}</code>
+            </div>
+            <div className='flex justify-between items-center py-2 border-b border-gray-50'>
+              <span className='text-sm text-gray-500'>代码修改时间</span>
+              <span className='text-sm text-gray-800'>{fmt(info.commit_date)}</span>
+            </div>
+            <div className='flex justify-between items-center py-2'>
+              <span className='text-sm text-gray-500'>服务端时间</span>
+              <span className='text-sm text-gray-800'>{fmt(info.server_time)}</span>
+            </div>
+          </>
+        ) : (
+          <div className='text-xs text-gray-500 py-4 text-center'>版本信息加载失败</div>
+        )}
+      </div>
+      <p className='text-xs text-gray-400 px-1 leading-relaxed'>
+        如何确认部署成功：对比「最近提交」与最新一次代码提交，一致即为最新；版本号也会随每次更新递增。
+      </p>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
 import sharp from 'sharp';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
   pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS, PUBLIC_TABLES
@@ -1955,6 +1956,37 @@ app.post('/api/health/medication-visits', authMiddleware, async (req, res) => {
       conn.release();
     }
     return res.json({ data: { medication_id: Number(medication_id), visit_ids: finalIds }, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// 版本信息（设置页展示，用于确认部署是否成功）
+// ════════════════════════════════════════════════════════════
+app.get('/api/version', async (req, res) => {
+  try {
+    const projectRoot = path.join(__dirname, '..');
+    let version = 'unknown';
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+      version = pkg.version || version;
+    } catch {}
+    let commit = null;
+    let commitDate = null;
+    try {
+      commit = execSync('git rev-parse --short HEAD', { cwd: projectRoot, encoding: 'utf8' }).trim();
+      commitDate = execSync('git log -1 --format=%cI', { cwd: projectRoot, encoding: 'utf8' }).trim();
+    } catch {}
+    return res.json({
+      data: {
+        version,
+        commit,
+        commit_date: commitDate,
+        server_time: new Date().toISOString(),
+      },
+      error: null,
+    });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }
