@@ -906,7 +906,15 @@ export default function FinancePage() {
               <div><span className="text-gray-400">类型：</span>{LOAN_TYPES[loanDetail.loan_type] || '—'}</div>
               <div><span className="text-gray-400">机构：</span>{loanDetail.institution || '—'}</div>
               <div><span className="text-gray-400">本金：</span>{formatMoney(loanDetail.principal)}</div>
-              <div><span className="text-gray-400">年利率：</span>{loanDetail.annual_rate}%</div>
+              <div>
+                <div><span className="text-gray-400">名义年利率：</span><span className="font-medium">{loanDetail.annual_rate}%</span></div>
+                <div className="text-xs">
+                  <span className="text-gray-400">实际年化(IRR)：</span>
+                  <span className="font-medium text-gray-600">
+                    {s.effective_rate != null ? s.effective_rate.toFixed(2) + '%' : '—'}
+                  </span>
+                </div>
+              </div>
               <div><span className="text-gray-400">期数：</span>{loanDetail.term_months} 月</div>
               <div><span className="text-gray-400">还款方式：</span>{REPAYMENT_METHODS[loanDetail.repayment_method] || '—'}</div>
               <div><span className="text-gray-400">放款日：</span>{formatDate(loanDetail.start_date)}</div>
@@ -1161,8 +1169,13 @@ export default function FinancePage() {
                         <div className="font-medium text-gray-700">{formatMoney(loan.principal)}</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-400">年利率</div>
-                        <div className="font-medium text-gray-700">{loan.annual_rate}%</div>
+                        <div className="text-xs text-gray-400">年利率 / IRR</div>
+                        <div className="font-medium text-gray-700">
+                          {loan.annual_rate}%
+                          <span className="text-xs text-gray-400">
+                            {loan.effective_rate != null ? ' / ' + loan.effective_rate.toFixed(2) + '%' : ''}
+                          </span>
+                        </div>
                       </div>
                       <div>
                         <div className="text-xs text-gray-400">期数</div>

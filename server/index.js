@@ -2095,6 +2095,49 @@ function calculatePaymentSchedule(principal, annualRate, termMonths, method, sta
   return schedule;
 }
 
+// 计算贷款的实际年化利率（XIRR，现金流精确到日）
+// 现金流：放款日 +本金，各期还款日 -应还金额；返回百分比数值（如 5.66），无法计算时返回 null
+function computeEffectiveRate(loan, payments) {
+  try {
+    const principal = parseFloat(loan.principal);
+    const start = new Date(loan.start_date);
+    if (!Number.isFinite(principal) || principal <= 0 || isNaN(start.getTime())) return null;
+    if (!Array.isArray(payments) || payments.length === 0) return null;
+
+    const cfs = [[start.getTime(), principal]];
+    for (const p of payments) {
+      const amt = parseFloat(p.due_amount);
+      const d = new Date(p.due_date);
+      if (!Number.isFinite(amt) || amt <= 0 || isNaN(d.getTime())) continue;
+      cfs.push([d.getTime(), -amt]);
+    }
+    if (cfs.length < 2) return null;
+
+    // 还款总额 ≤ 本金 → 无息贷款，IRR = 0
+    const totalOut = cfs.reduce((s, c) => s + c[1], 0);
+    if (totalOut >= 0) return 0;
+
+    const t0 = cfs[0][0];
+    // NPV(r) = Σ c / (1+r)^(t/365)，随 r 单调递增
+    const npv = (r) => {
+      let s = 0;
+      for (const [t, c] of cfs) s += c / Math.pow(1 + r, (t - t0) / 86400000 / 365);
+      return s;
+    };
+
+    let lo = -0.9999, hi = 10;
+    for (let i = 0; i < 300; i++) {
+      const mid = (lo + hi) / 2;
+      if (npv(mid) > 0) hi = mid; else lo = mid;
+    }
+    const rate = (lo + hi) / 2;
+    if (!Number.isFinite(rate)) return null;
+    return Math.round(rate * 10000) / 100; // 百分比数值，保留 2 位小数
+  } catch {
+    return null;
+  }
+}
+
 // ── 贷款专用接口 ─────────────────────────────────────────
 
 // 创建贷款 + 生成还款计划（支持自定义 schedule）
@@ -2309,6 +2352,7 @@ app.get('/api/loans/:id/detail', authMiddleware, async (req, res) => {
       remaining_principal: remainingPrincipal,
       next_due_amount: nextPayment ? Math.round(parseFloat(nextPayment.due_amount) * 100) / 100 : 0,
       next_due_date: nextPayment ? nextPayment.due_date : null,
+      effective_rate: computeEffectiveRate(loan, loan.payments),
     };
 
     return res.json({ data: loan, error: null });
@@ -2472,6 +2516,22 @@ app.get('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     const sql = `SELECT ${selectClause} FROM ${escapeId(table)} ${whereClause} ${orderClause} ${limitClause}`;
     const [rows] = await pool.query(sql, params);
     const data = rows.map(row => transformRow(table, row));
+
+    // loans 列表附加实际年化利率（IRR），供前端直接展示
+    if (table === 'loans' && data.length > 0) {
+      const ids = data.map(r => r.id);
+      const [allPayments] = await pool.query(
+        `SELECT loan_id, due_date, due_amount FROM loan_payments
+         WHERE loan_id IN (?) AND user_id = ? ORDER BY installment ASC`, [ids, userId]
+      );
+      const byLoan = {};
+      for (const p of allPayments) {
+        (byLoan[p.loan_id] = byLoan[p.loan_id] || []).push(transformRow('loan_payments', p));
+      }
+      for (const loan of data) {
+        loan.effective_rate = computeEffectiveRate(loan, byLoan[loan.id] || []);
+      }
+    }
 
     if (single === '1') {
       return res.json({ data: data[0] || null, error: null, count: countResult });
