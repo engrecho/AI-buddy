@@ -2043,6 +2043,13 @@ async function batchInsertPayments(conn, userId, loanId, schedule) {
 }
 
 // O(n) 计算还款计划：滚动维护剩余本金，末期吸收累计舍入误差，保证本金合计恰等于本金
+// 本地日期格式化（YYYY-MM-DD）。不能用 toISOString()：它按 UTC 输出，
+// 在 CST 等正时区服务器上会把本地零点日期整体偏移一天（2026-09-20 修复）
+function fmtLocalDate(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function calculatePaymentSchedule(principal, annualRate, termMonths, method, startDate, repaymentDay) {
   const monthlyRate = annualRate / 12 / 100;
   const baseDate = new Date(startDate);
@@ -2086,7 +2093,7 @@ function calculatePaymentSchedule(principal, annualRate, termMonths, method, sta
 
     schedule.push({
       installment: i,
-      due_date: dueDate.toISOString().slice(0, 10),
+      due_date: fmtLocalDate(dueDate),
       due_amount: round2(principalAmount + interestAmount),
       principal_amount: principalAmount,
       interest_amount: interestAmount,
@@ -2213,7 +2220,7 @@ function buildCustomSchedule(amounts, startDate, repaymentDay) {
       dueAmount = parseFloat(item) || 0;
       const anchor = new Date(baseDate.getFullYear(), baseDate.getMonth() + i + 1, 1);
       const dim = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate();
-      dueDateStr = new Date(anchor.getFullYear(), anchor.getMonth(), Math.min(repaymentDay, dim)).toISOString().slice(0, 10);
+      dueDateStr = fmtLocalDate(new Date(anchor.getFullYear(), anchor.getMonth(), Math.min(repaymentDay, dim)));
     }
     return {
       installment: i + 1,

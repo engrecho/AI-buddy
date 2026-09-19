@@ -49,6 +49,18 @@ const PAYMENT_STATUS = {
 };
 
 // ── 工具函数 ────────────────────────────────────────────────
+// 本地日期转 YYYY-MM-DD（避免 toISOString 的 UTC 偏移导致日期差一天）
+function dateLocal(d) {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+function todayLocal() {
+  return dateLocal(new Date());
+}
+
 function formatDate(d) {
   if (!d) return '—';
   const date = new Date(d);
@@ -120,7 +132,7 @@ function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
   const [form, setForm] = useState({
     name: '', loan_type: 'other', institution: '', principal: '',
     annual_rate: '', term_months: '', repayment_method: 'equal_payment',
-    start_date: new Date().toISOString().slice(0, 10), repayment_day: 1, notes: '',
+    start_date: todayLocal(), repayment_day: 1, notes: '',
   });
   // 还款计划模式：auto（自动计算）| manual（手动录入）
   const [scheduleMode, setScheduleMode] = useState('auto');
@@ -137,7 +149,7 @@ function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
         annual_rate: initial.annual_rate != null ? String(initial.annual_rate) : '',
         term_months: initial.term_months != null ? String(initial.term_months) : '',
         repayment_method: initial.repayment_method || 'equal_payment',
-        start_date: initial.start_date ? new Date(initial.start_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+        start_date: dateLocal(initial.start_date) || todayLocal(),
         repayment_day: initial.repayment_day || 1,
         notes: initial.notes || '',
       });
@@ -149,7 +161,7 @@ function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
       setForm({
         name: '', loan_type: 'other', institution: '', principal: '',
         annual_rate: '', term_months: '', repayment_method: 'equal_payment',
-        start_date: new Date().toISOString().slice(0, 10), repayment_day: 1, notes: '',
+        start_date: todayLocal(), repayment_day: 1, notes: '',
       });
       setManualAmounts([]);
     }
@@ -517,8 +529,8 @@ function InsuranceFormDialog({ open, onClose, onSubmit, initial, members = [] })
           profile_id: n.profile_id != null ? String(n.profile_id) : '',
           coverage_amount: n.coverage_amount != null ? String(n.coverage_amount) : '',
           annual_premium: n.annual_premium != null ? String(n.annual_premium) : '',
-          effective_date: n.effective_date ? new Date(n.effective_date).toISOString().slice(0, 10) : '',
-          expiry_date: n.expiry_date ? new Date(n.expiry_date).toISOString().slice(0, 10) : '',
+          effective_date: dateLocal(n.effective_date),
+          expiry_date: dateLocal(n.expiry_date),
           payment_frequency: n.payment_frequency || 'yearly',
           auto_renew: !!n.auto_renew,
           beneficiary: n.beneficiary || '',
@@ -831,7 +843,7 @@ export default function FinancePage() {
     try {
       const body = status === 'overdue'
         ? { status, paid_amount: 0, paid_date: null }
-        : { status: 'paid', paid_amount: payment.due_amount, paid_date: new Date().toISOString().slice(0, 10) };
+        : { status: 'paid', paid_amount: payment.due_amount, paid_date: todayLocal() };
       await api(`/api/loan-payments/${payment.id}/mark`, {
         method: 'PATCH',
         body: JSON.stringify(body),
