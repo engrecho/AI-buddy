@@ -2008,7 +2008,7 @@ function validateLoanInputs({ principal, annual_rate, term_months, repayment_day
   if (!Number.isFinite(p) || p <= 0) errs.push('本金必须为正数');
   if (!Number.isFinite(r) || r < 0 || r > 100) errs.push('年利率须在 0~100 之间');
   if (!Number.isInteger(n) || n <= 0 || n > LOAN_MAX_TERM) errs.push(`期数须为 1~${LOAN_MAX_TERM} 的整数`);
-  if (!Number.isInteger(day) || day < 1 || day > 28) errs.push('每月还款日须为 1~28');
+  if (!Number.isInteger(day) || day < 1 || day > 31) errs.push('每月还款日须为 1~31');
   if (method && !['equal_payment', 'equal_principal'].includes(method)) errs.push('还款方式无效');
   return { p, r, n, day, errs };
 }
@@ -2056,7 +2056,10 @@ function calculatePaymentSchedule(principal, annualRate, termMonths, method, sta
   let storedPrincipal = 0;     // 已入表（四舍五入后）的本金合计，末期据此校准
 
   for (let i = 1; i <= termMonths; i++) {
-    const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, Math.min(repaymentDay, 28));
+    // 还款日落在目标月内（29~31 号自动钳制到当月最后一天，如 2 月 30 日 → 2 月 28/29 日）
+    const monthAnchor = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, 1);
+    const daysInMonth = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0).getDate();
+    const dueDate = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), Math.min(repaymentDay, daysInMonth));
     const isLast = i === termMonths;
     let principalAmount, interestAmount;
 
@@ -2208,8 +2211,9 @@ function buildCustomSchedule(amounts, startDate, repaymentDay) {
       dueDateStr = item.due_date;
     } else {
       dueAmount = parseFloat(item) || 0;
-      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i + 1, Math.min(repaymentDay, 28));
-      dueDateStr = d.toISOString().slice(0, 10);
+      const anchor = new Date(baseDate.getFullYear(), baseDate.getMonth() + i + 1, 1);
+      const dim = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate();
+      dueDateStr = new Date(anchor.getFullYear(), anchor.getMonth(), Math.min(repaymentDay, dim)).toISOString().slice(0, 10);
     }
     return {
       installment: i + 1,
@@ -2314,12 +2318,29 @@ app.patch('/api/loans/:id', authMiddleware, async (req, res) => {
 });
 
 // 贷款详情（含还款计划）
+// ── 自动结转过期未标记的还款期次 ─────────────────────────────
+// 约定：应还日已过仍为 pending 的期次，默认视为"准时归还"（自动入账），
+// 无需用户手动标记；真实逾期的期次由用户手动标记为 overdue。
+async function autoSettleOverdue(userId) {
+  try {
+    await pool.query(
+      `UPDATE loan_payments
+       SET status = 'paid', paid_amount = due_amount, paid_date = due_date, updated_at = NOW()
+       WHERE user_id = ? AND status = 'pending' AND due_date < CURDATE()`,
+      [userId]
+    );
+  } catch (err) {
+    console.error('autoSettleOverdue error:', err.message);
+  }
+}
+
 app.get('/api/loans/:id/detail', authMiddleware, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.json({ data: null, error: { message: 'id 无效' } });
   }
   try {
+    await autoSettleOverdue(req.user.id);
     const [loans] = await pool.query(
       'SELECT * FROM loans WHERE id = ? AND user_id = ? LIMIT 1', [id, req.user.id]
     );
@@ -2395,6 +2416,8 @@ app.patch('/api/loan-payments/:id/mark', authMiddleware, async (req, res) => {
 // 贷款汇总（本月待还、临近提醒）
 app.get('/api/loans/summary', authMiddleware, async (req, res) => {
   try {
+    await autoSettleOverdue(req.user.id);
+
     // 本月待还
     const [monthPayments] = await pool.query(
       `SELECT lp.*, l.name as loan_name FROM loan_payments lp
@@ -2404,6 +2427,39 @@ app.get('/api/loans/summary', authMiddleware, async (req, res) => {
        ORDER BY lp.due_date ASC`,
       [req.user.id]
     );
+
+    // 本月应还合计（全部状态）与本月已还合计
+    const [monthAgg] = await pool.query(
+      `SELECT COUNT(*) AS due_count,
+              COALESCE(SUM(due_amount), 0) AS due_total,
+              COALESCE(SUM(CASE WHEN status = 'paid'
+                THEN COALESCE(NULLIF(paid_amount, 0), due_amount) ELSE 0 END), 0) AS paid_total
+       FROM loan_payments
+       WHERE user_id = ? AND DATE_FORMAT(due_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')`,
+      [req.user.id]
+    );
+
+    // 各贷款最近一次应还（下一期待还日 + 金额）
+    const [pendings] = await pool.query(
+      `SELECT lp.loan_id, l.name AS loan_name, lp.due_date, lp.due_amount
+       FROM loan_payments lp
+       JOIN loans l ON lp.loan_id = l.id
+       WHERE lp.user_id = ? AND lp.status = 'pending'
+       ORDER BY lp.due_date ASC`,
+      [req.user.id]
+    );
+    const nextByLoanMap = new Map();
+    for (const p of pendings) {
+      if (!nextByLoanMap.has(p.loan_id)) {
+        nextByLoanMap.set(p.loan_id, {
+          loan_id: p.loan_id,
+          loan_name: p.loan_name,
+          next_due_date: p.due_date,
+          next_due_amount: Math.round(parseFloat(p.due_amount || 0) * 100) / 100,
+        });
+      }
+    }
+    const nextByLoan = Array.from(nextByLoanMap.values());
 
     // 3 天内到期未还
     const [upcoming] = await pool.query(
@@ -2415,11 +2471,11 @@ app.get('/api/loans/summary', authMiddleware, async (req, res) => {
       [req.user.id]
     );
 
-    // 已逾期未还（应还日在今天之前仍为 pending）
+    // 已逾期（真实逾期状态，或应还日在今天之前仍为 pending 的兜底）
     const [overdue] = await pool.query(
       `SELECT lp.*, l.name as loan_name FROM loan_payments lp
        JOIN loans l ON lp.loan_id = l.id
-       WHERE lp.user_id = ? AND lp.status = 'pending'
+       WHERE lp.user_id = ? AND lp.status IN ('pending', 'overdue')
        AND lp.due_date < CURDATE()
        ORDER BY lp.due_date ASC`,
       [req.user.id]
@@ -2437,6 +2493,12 @@ app.get('/api/loans/summary', authMiddleware, async (req, res) => {
         month_count: monthPayments.length,
         overdue_total: Math.round(overdueTotal * 100) / 100,
         overdue_count: overdue.length,
+        // 本月应还/已还（全部状态口径，供列表页汇总条展示）
+        month_due_total: Math.round(parseFloat(monthAgg[0].due_total) * 100) / 100,
+        month_paid_total: Math.round(parseFloat(monthAgg[0].paid_total) * 100) / 100,
+        month_due_count: monthAgg[0].due_count || 0,
+        // 各贷款最近一次应还日期与金额
+        next_by_loan: nextByLoan,
       },
       error: null,
     });

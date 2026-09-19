@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Wallet, Plus, ChevronLeft, Trash2, CheckCircle2, Clock, AlertCircle, TrendingDown, Calendar, Shield, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -77,6 +77,40 @@ function StatCard({ label, value, sub, accent = 'text-gray-800' }) {
       <div className="text-xs text-gray-400">{label}</div>
       <div className={`text-lg font-bold ${accent}`}>{value}</div>
       {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+// 备注：默认最多 3 行，超出可展开/收起
+function NotesBlock({ notes }) {
+  const [open, setOpen] = useState(false);
+  const [clampable, setClampable] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    setOpen(false);
+    setClampable(false);
+    if (ref.current) {
+      setClampable(ref.current.scrollHeight > ref.current.clientHeight + 2);
+    }
+  }, [notes]);
+  if (!notes) return null;
+  return (
+    <div className="pt-2 border-t border-gray-50">
+      <div
+        ref={ref}
+        className={`text-sm text-gray-500 whitespace-pre-wrap break-words ${open ? '' : 'line-clamp-3'}`}
+      >
+        {notes}
+      </div>
+      {clampable && (
+        <button
+          onClick={() => setOpen(!open)}
+          className="mt-1 text-xs font-medium"
+          style={{ color: '#5a7a00' }}
+        >
+          {open ? '收起 ▲' : '展开全部 ▼'}
+        </button>
+      )}
     </div>
   );
 }
@@ -259,7 +293,7 @@ function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">每月还款日</label>
-              <Input type="number" min="1" max="28" value={form.repayment_day} onChange={e => set('repayment_day', e.target.value)} />
+              <Input type="number" min="1" max="31" value={form.repayment_day} onChange={e => set('repayment_day', e.target.value)} />
             </div>
           </div>
 
@@ -639,12 +673,18 @@ export default function FinancePage() {
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [loanDetail, setLoanDetail] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [loanSummary, setLoanSummary] = useState(null);
+  const [expandedPaymentId, setExpandedPaymentId] = useState(null);
 
   const loadLoans = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api('/api/loans?order=created_at:desc');
+      const [data, sum] = await Promise.all([
+        api('/api/loans?order=created_at:desc'),
+        api('/api/loans/summary').catch(() => null),
+      ]);
       setLoans(data.data || []);
+      if (sum && sum.data) setLoanSummary(sum.data);
     } catch (err) {
       toast.error('加载贷款列表失败');
     } finally {
@@ -785,18 +825,18 @@ export default function FinancePage() {
     }
   };
 
-  const markPayment = async (payment, status) => {
+  // 修正还款状态：默认过期即视同准时归还（后端自动结转），
+  // 仅真实逾期时手动标记 overdue，补还后再改回 paid
+  const setPaymentStatus = async (payment, status) => {
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const body = status === 'overdue'
+        ? { status, paid_amount: 0, paid_date: null }
+        : { status: 'paid', paid_amount: payment.due_amount, paid_date: new Date().toISOString().slice(0, 10) };
       await api(`/api/loan-payments/${payment.id}/mark`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          status,
-          paid_amount: status === 'paid' ? payment.due_amount : 0,
-          paid_date: status === 'paid' ? today : null,
-        }),
+        body: JSON.stringify(body),
       });
-      toast.success(status === 'paid' ? '已标记还款' : '已取消标记');
+      toast.success(status === 'overdue' ? '已标记为逾期' : '已记为准时归还');
       if (selectedLoan) loadLoanDetail(selectedLoan.id);
     } catch {
       toast.error('操作失败');
@@ -928,32 +968,36 @@ export default function FinancePage() {
             </Badge>
           </div>
 
-          {/* 基本信息 */}
-          <div className="bg-white rounded-lg border border-gray-100 p-4 space-y-2">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div><span className="text-gray-400">类型：</span>{LOAN_TYPES[loanDetail.loan_type] || '—'}</div>
-              <div><span className="text-gray-400">机构：</span>{loanDetail.institution || '—'}</div>
-              <div><span className="text-gray-400">本金：</span>{formatMoney(loanDetail.principal)}</div>
-              <div>
-                <div><span className="text-gray-400">名义年利率：</span><span className="font-medium">{loanDetail.annual_rate}%</span></div>
-                <div className="text-xs">
-                  <span className="text-gray-400">实际年化(IRR)：</span>
-                  <span className="font-medium text-gray-600">
-                    {s.effective_rate != null ? s.effective_rate.toFixed(2) + '%' : '—'}
-                  </span>
-                </div>
+          {/* 身份卡：来源 / 类型 / 还款方式 */}
+          <div className="bg-white rounded-lg border border-gray-100 p-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-gray-400 mb-0.5">来源</div>
+                <div className="text-sm font-bold text-gray-800 truncate">{loanDetail.institution || '—'}</div>
               </div>
-              <div><span className="text-gray-400">期数：</span>{loanDetail.term_months} 月</div>
-              <div><span className="text-gray-400">还款方式：</span>{REPAYMENT_METHODS[loanDetail.repayment_method] || '—'}</div>
+              <div className="min-w-0">
+                <div className="text-xs text-gray-400 mb-0.5">类型</div>
+                <div className="text-sm font-bold text-gray-800 truncate">{LOAN_TYPES[loanDetail.loan_type] || '—'}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs text-gray-400 mb-0.5">还款方式</div>
+                <div className="text-sm font-bold text-gray-800 truncate">{REPAYMENT_METHODS[loanDetail.repayment_method] || '—'}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 日期信息 + 备注（最多3行，可展开） */}
+          <div className="bg-white rounded-lg border border-gray-100 p-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
               <div><span className="text-gray-400">放款日：</span>{formatDate(loanDetail.start_date)}</div>
               <div><span className="text-gray-400">还款日：</span>每月{loanDetail.repayment_day}号</div>
             </div>
-            {loanDetail.notes && <div className="text-sm text-gray-500 pt-2 border-t border-gray-50">{loanDetail.notes}</div>}
+            <NotesBlock notes={loanDetail.notes} />
           </div>
 
           {/* 汇总卡片 · 进度与利率 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* 期数进度：已还期数(重点) + 总期数(次重点) 同格 */}
+            {/* 还款进度：期数 + 本金，同卡两块 */}
             <div className="bg-white rounded-lg border border-gray-100 p-4">
               <div className="text-xs text-gray-400 mb-1">还款进度（期数）</div>
               <div className="flex items-baseline gap-2">
@@ -964,6 +1008,18 @@ export default function FinancePage() {
                 <div className="h-full rounded-full" style={{ width: `${progressPct}%`, backgroundColor: '#5a7a00' }} />
               </div>
               <div className="mt-1 text-[11px] text-gray-400">已完成 {progressPct}% · 剩 {s.remaining_installments || 0} 期</div>
+
+              <div className="mt-3 pt-3 border-t border-gray-50">
+                <div className="text-xs text-gray-400 mb-1">本金已还进度</div>
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className="text-xl font-bold text-gray-800">{formatMoney(principalPaid)}</span>
+                  <span className="text-xs font-bold text-gray-600">/ 共 {formatMoney(totalPrincipal)}</span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${principalPct}%`, backgroundColor: '#bbea3b' }} />
+                </div>
+                <div className="mt-1 text-[11px] text-gray-400">已还本金 {principalPct}%</div>
+              </div>
             </div>
 
             {/* 利率：IRR(重点) + 名义利率(次重点) 同格 */}
@@ -993,8 +1049,11 @@ export default function FinancePage() {
 
           {/* 汇总卡片 · 金额明细 */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <StatCard label="总借贷本金" value={formatMoney(totalPrincipal)} />
-            <StatCard label="已还金额" value={formatMoney(s.total_paid)} />
+            <StatCard
+              label="已还金额"
+              value={formatMoney(s.total_paid)}
+              sub={`已还本金 ${formatMoney(principalPaid)} + 已还利息 ${formatMoney(paidInterest)}`}
+            />
             <StatCard
               label="待还金额"
               value={formatMoney(remainingAmount)}
@@ -1002,88 +1061,93 @@ export default function FinancePage() {
               sub={`本金 ${formatMoney(remainingPrincipal)} + 利息 ${formatMoney(remainingInterest)}`}
             />
             <StatCard label="总利息" value={formatMoney(totalInterest)} accent="text-orange-500" />
-            <StatCard label="已还利息" value={formatMoney(paidInterest)} />
-            <StatCard label="待还利息" value={formatMoney(remainingInterest)} />
           </div>
 
-          {/* 汇总卡片 · 本金进度 + 下期提醒（补充布局建议） */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="bg-white rounded-lg border border-gray-100 p-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-400">本金已还进度</span>
-                <span className="text-xs font-medium text-gray-600">{principalPct}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${principalPct}%`, backgroundColor: '#bbea3b' }} />
-              </div>
-              <div className="mt-1 text-[11px] text-gray-400">
-                已还本金 {formatMoney(principalPaid)} / 总本金 {formatMoney(totalPrincipal)}
-              </div>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-100 p-4 flex flex-col justify-center">
+          {/* 汇总卡片 · 下一期待还（含还款日） */}
+          <div className="bg-white rounded-lg border border-gray-100 p-4 flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <div className="text-xs text-gray-400">下一期待还</div>
               <div className="text-xl font-bold text-gray-800">{s.next_due_amount ? formatMoney(s.next_due_amount) : '—'}</div>
               <div className="text-[11px] text-gray-400">{formatDate(s.next_due_date) || '暂无待还期次'}</div>
             </div>
+            <div className="text-right flex-shrink-0">
+              <div className="text-xs text-gray-400">还款日</div>
+              <div className="text-sm font-medium text-gray-700">每月 {loanDetail.repayment_day} 号</div>
+            </div>
           </div>
 
-          {/* 还款计划表 */}
+          {/* 还款计划（两行式列表：默认准时归还，点击行可修正状态） */}
           <div className="bg-white rounded-lg border border-gray-100">
-            <div className="px-4 py-3 border-b border-gray-50">
-              <span className="text-sm font-medium text-gray-900">还款计划</span>
+            <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-900">还款详情</span>
+              <span className="text-[11px] text-gray-400">默认准时归还 · 点击条目可修正逾期</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-400 border-b border-gray-50">
-                    <th className="px-3 py-2 text-left font-medium">期次</th>
-                    <th className="px-3 py-2 text-left font-medium">应还日</th>
-                    <th className="px-3 py-2 text-right font-medium">应还金额</th>
-                    <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">本金</th>
-                    <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">利息</th>
-                    <th className="px-3 py-2 text-center font-medium">状态</th>
-                    <th className="px-3 py-2 text-center font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(loanDetail.payments || []).map((p) => {
-                    const days = daysUntil(p.due_date);
-                    const isUpcoming = p.status === 'pending' && days != null && days <= 3 && days >= 0;
-                    const isOverdue = p.status === 'pending' && days != null && days < 0;
-                    return (
-                      <tr key={p.id} className={`border-b border-gray-50 ${isUpcoming ? 'bg-orange-50' : ''} ${isOverdue ? 'bg-red-50' : ''}`}>
-                        <td className="px-3 py-2 text-gray-600">{p.installment}</td>
-                        <td className="px-3 py-2 text-gray-600">
-                          {formatDate(p.due_date)}
-                          {isUpcoming && <span className="text-xs text-orange-500 ml-1">（{days}天后）</span>}
-                          {isOverdue && <span className="text-xs text-red-500 ml-1">（逾期）</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium text-gray-800">{formatMoney(p.due_amount)}</td>
-                        <td className="px-3 py-2 text-right text-gray-500 hidden sm:table-cell">{formatMoney(p.principal_amount)}</td>
-                        <td className="px-3 py-2 text-right text-gray-500 hidden sm:table-cell">{formatMoney(p.interest_amount)}</td>
-                        <td className="px-3 py-2 text-center">
-                          {p.status === 'paid' ? (
-                            <Badge className="bg-green-100 text-green-700">已还</Badge>
-                          ) : p.status === 'partial' ? (
-                            <Badge className="bg-blue-100 text-blue-700">部分</Badge>
-                          ) : isOverdue ? (
-                            <Badge className="bg-red-100 text-red-700">逾期</Badge>
-                          ) : (
-                            <Badge className="bg-gray-100 text-gray-500">待还</Badge>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {p.status === 'paid' ? (
-                            <button onClick={() => markPayment(p, 'pending')} className="text-xs text-gray-400 hover:text-gray-600">撤销</button>
-                          ) : (
-                            <button onClick={() => markPayment(p, 'paid')} className="text-xs font-medium" style={{ color: '#5a7a00' }}>标记还款</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div>
+              {(loanDetail.payments || []).map((p) => {
+                const days = daysUntil(p.due_date);
+                const isUpcoming = p.status === 'pending' && days != null && days <= 3 && days >= 0;
+                const isOverdue = p.status === 'overdue';
+                const expanded = expandedPaymentId === p.id;
+                const statusBadge = p.status === 'paid' ? (
+                  <Badge className="bg-green-100 text-green-700">准时归还</Badge>
+                ) : p.status === 'overdue' ? (
+                  <Badge className="bg-red-100 text-red-700">逾期</Badge>
+                ) : p.status === 'partial' ? (
+                  <Badge className="bg-blue-100 text-blue-700">部分还款</Badge>
+                ) : (
+                  <Badge className="bg-gray-100 text-gray-500">待还</Badge>
+                );
+                return (
+                  <div
+                    key={p.id}
+                    className={`border-b border-gray-50 last:border-b-0 ${isOverdue ? 'bg-red-50' : isUpcoming ? 'bg-orange-50' : ''}`}
+                  >
+                    <div
+                      className="px-4 py-2.5 cursor-pointer active:bg-gray-50"
+                      onClick={() => setExpandedPaymentId(expanded ? null : p.id)}
+                    >
+                      {/* 第一行：期次 + 应还日 + 金额 + 状态 */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 w-9 flex-shrink-0">#{p.installment}</span>
+                        <span className="text-sm text-gray-600">{formatDate(p.due_date)}</span>
+                        {isUpcoming && <span className="text-xs text-orange-500 flex-shrink-0">（{days}天后）</span>}
+                        <span className="ml-auto text-sm font-semibold text-gray-800 flex-shrink-0">{formatMoney(p.due_amount)}</span>
+                        <span className="flex-shrink-0">{statusBadge}</span>
+                      </div>
+                      {/* 第二行：本金/利息拆解 */}
+                      <div className="flex items-center gap-3 mt-0.5 pl-11 text-xs text-gray-400">
+                        <span>本金 {formatMoney(p.principal_amount)}</span>
+                        <span>利息 {formatMoney(p.interest_amount)}</span>
+                        {p.status === 'paid' && p.paid_date && <span className="ml-auto">归还 {formatDate(p.paid_date)}</span>}
+                        {isOverdue && <span className="ml-auto text-red-400">逾期未还</span>}
+                      </div>
+                    </div>
+                    {/* 展开区：状态修正（默认不在列表上直接修改） */}
+                    {expanded && (
+                      <div className="px-4 pb-3 pl-14 flex items-center gap-2">
+                        {p.status === 'overdue' ? (
+                          <button
+                            onClick={() => { setExpandedPaymentId(null); setPaymentStatus(p, 'paid'); }}
+                            className="text-xs px-2.5 py-1.5 rounded-md font-medium text-white"
+                            style={{ backgroundColor: '#5a7a00' }}
+                          >
+                            标记为准时归还
+                          </button>
+                        ) : (p.status === 'paid' || p.status === 'partial') ? (
+                          <button
+                            onClick={() => { setExpandedPaymentId(null); setPaymentStatus(p, 'overdue'); }}
+                            className="text-xs px-2.5 py-1.5 rounded-md font-medium bg-red-500 text-white hover:bg-red-600"
+                          >
+                            标记为逾期
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">未到期，到期后将自动记为准时归还</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1206,6 +1270,34 @@ export default function FinancePage() {
               </Button>
             </div>
 
+            {/* 本月汇总：应还 / 已还 / 待还 */}
+            {loanSummary && (
+              <div className="bg-white rounded-lg border border-gray-100 p-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">本月应还</div>
+                    <div className="text-base font-bold text-gray-800">{formatMoney(loanSummary.month_due_total)}</div>
+                    <div className="text-[11px] text-gray-400">共 {loanSummary.month_due_count ?? 0} 期</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">本月已还</div>
+                    <div className="text-base font-bold text-green-600">{formatMoney(loanSummary.month_paid_total)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">本月待还</div>
+                    <div className="text-base font-bold text-orange-600">
+                      {formatMoney(Math.max(0, Math.round(((loanSummary.month_due_total || 0) - (loanSummary.month_paid_total || 0)) * 100) / 100))}
+                    </div>
+                  </div>
+                </div>
+                {(loanSummary.overdue_count || 0) > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-50 text-xs text-red-500 font-medium">
+                    ⚠ 有 {loanSummary.overdue_count} 期逾期未还，合计 {formatMoney(loanSummary.overdue_total)}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 贷款列表 */}
             {loading ? (
               <div className="space-y-3">
@@ -1219,7 +1311,9 @@ export default function FinancePage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {loans.map(loan => (
+                {loans.map(loan => {
+                  const nextDue = (loanSummary?.next_by_loan || []).find(n => String(n.loan_id) === String(loan.id));
+                  return (
                   <div key={loan.id}
                     onClick={() => handleSelectLoan(loan)}
                     className="bg-white rounded-lg border border-gray-100 p-4 cursor-pointer hover:shadow-md active:scale-[0.99] transition-all">
@@ -1266,8 +1360,16 @@ export default function FinancePage() {
                         <div className="font-medium text-gray-700">{loan.term_months} 月</div>
                       </div>
                     </div>
+                    {/* 最近一次应还日期 */}
+                    {nextDue && nextDue.next_due_date && (
+                      <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between text-xs">
+                        <span className="text-gray-400">下次应还 {formatDate(nextDue.next_due_date)}</span>
+                        <span className="font-medium text-orange-600">{formatMoney(nextDue.next_due_amount)}</span>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
