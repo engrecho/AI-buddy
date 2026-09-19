@@ -70,6 +70,17 @@ function daysUntil(dateStr) {
   return Math.round((target - now) / 86400000);
 }
 
+// 汇总区复用的小方块
+function StatCard({ label, value, sub, accent = 'text-gray-800' }) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-100 p-3">
+      <div className="text-xs text-gray-400">{label}</div>
+      <div className={`text-lg font-bold ${accent}`}>{value}</div>
+      {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
 // ── 贷款表单 ────────────────────────────────────────────────
 function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
   const [form, setForm] = useState({
@@ -886,6 +897,23 @@ export default function FinancePage() {
   // ── 贷款详情视图（含还款计划表） ─────────────────────────
   if (activeSection === 'loan' && selectedLoan && loanDetail) {
     const s = loanDetail.summary || {};
+
+    // 派生指标（用于方块展示）
+    const totalPrincipal = parseFloat(loanDetail.principal) || 0;
+    const totalInterest = s.total_interest || 0;
+    const paidInterest = (loanDetail.payments || [])
+      .filter(p => p.status === 'paid')
+      .reduce((sum, p) => sum + (parseFloat(p.interest_amount) || 0), 0);
+    const remainingInterest = Math.max(0, Math.round((totalInterest - paidInterest) * 100) / 100);
+    const remainingPrincipal = s.remaining_principal || 0;
+    const remainingAmount = Math.round((remainingPrincipal + remainingInterest) * 100) / 100;
+    const principalPaid = Math.round((totalPrincipal - remainingPrincipal) * 100) / 100;
+    const progressPct = s.total_installments ? Math.round((s.paid_installments / s.total_installments) * 100) : 0;
+    const principalPct = totalPrincipal ? Math.round((principalPaid / totalPrincipal) * 100) : 0;
+    const rateDiff = s.effective_rate != null
+      ? Math.round((s.effective_rate - (parseFloat(loanDetail.annual_rate) || 0)) * 100) / 100
+      : null;
+
     return (
       <div className="h-full overflow-y-auto bg-[#f5f5f5]">
         <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
@@ -923,23 +951,79 @@ export default function FinancePage() {
             {loanDetail.notes && <div className="text-sm text-gray-500 pt-2 border-t border-gray-50">{loanDetail.notes}</div>}
           </div>
 
-          {/* 汇总卡片 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white rounded-lg border border-gray-100 p-3">
-              <div className="text-xs text-gray-400">总期数</div>
-              <div className="text-lg font-bold text-gray-800">{s.total_installments || 0}</div>
+          {/* 汇总卡片 · 进度与利率 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 期数进度：已还期数(重点) + 总期数(次重点) 同格 */}
+            <div className="bg-white rounded-lg border border-gray-100 p-4">
+              <div className="text-xs text-gray-400 mb-1">还款进度（期数）</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-green-600">{s.paid_installments || 0}</span>
+                <span className="text-sm text-gray-400">/ 共 {s.total_installments || 0} 期</span>
+              </div>
+              <div className="mt-2 h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${progressPct}%`, backgroundColor: '#5a7a00' }} />
+              </div>
+              <div className="mt-1 text-[11px] text-gray-400">已完成 {progressPct}% · 剩 {s.remaining_installments || 0} 期</div>
             </div>
-            <div className="bg-white rounded-lg border border-gray-100 p-3">
-              <div className="text-xs text-gray-400">已还期数</div>
-              <div className="text-lg font-bold text-green-600">{s.paid_installments || 0}</div>
+
+            {/* 利率：IRR(重点) + 名义利率(次重点) 同格 */}
+            <div className="bg-white rounded-lg border border-gray-100 p-4">
+              <div className="text-xs text-gray-400 mb-1">利率</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold" style={{ color: '#5a7a00' }}>
+                  {s.effective_rate != null ? s.effective_rate.toFixed(2) + '%' : '—'}
+                </span>
+                <span className="text-sm text-gray-400">IRR 实际年化</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-sm">
+                <span className="text-gray-500">
+                  名义年化 <span className="font-medium text-gray-700">{loanDetail.annual_rate}%</span>
+                </span>
+                {rateDiff != null && (
+                  <span
+                    className="text-[11px] px-1.5 py-0.5 rounded font-medium"
+                    style={{ backgroundColor: rateDiff > 0 ? '#fef3c7' : '#dcfce7', color: rateDiff > 0 ? '#b45309' : '#15803d' }}
+                  >
+                    实际{rateDiff > 0 ? '高' : '低'} {Math.abs(rateDiff).toFixed(2)}pt
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="bg-white rounded-lg border border-gray-100 p-3">
-              <div className="text-xs text-gray-400">已还总额</div>
-              <div className="text-lg font-bold text-gray-800">{formatMoney(s.total_paid)}</div>
+          </div>
+
+          {/* 汇总卡片 · 金额明细 */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <StatCard label="总借贷本金" value={formatMoney(totalPrincipal)} />
+            <StatCard label="已还金额" value={formatMoney(s.total_paid)} />
+            <StatCard
+              label="待还金额"
+              value={formatMoney(remainingAmount)}
+              accent="text-orange-600"
+              sub={`本金 ${formatMoney(remainingPrincipal)} + 利息 ${formatMoney(remainingInterest)}`}
+            />
+            <StatCard label="总利息" value={formatMoney(totalInterest)} accent="text-orange-500" />
+            <StatCard label="已还利息" value={formatMoney(paidInterest)} />
+            <StatCard label="待还利息" value={formatMoney(remainingInterest)} />
+          </div>
+
+          {/* 汇总卡片 · 本金进度 + 下期提醒（补充布局建议） */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-white rounded-lg border border-gray-100 p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-400">本金已还进度</span>
+                <span className="text-xs font-medium text-gray-600">{principalPct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${principalPct}%`, backgroundColor: '#bbea3b' }} />
+              </div>
+              <div className="mt-1 text-[11px] text-gray-400">
+                已还本金 {formatMoney(principalPaid)} / 总本金 {formatMoney(totalPrincipal)}
+              </div>
             </div>
-            <div className="bg-white rounded-lg border border-gray-100 p-3">
-              <div className="text-xs text-gray-400">总利息</div>
-              <div className="text-lg font-bold text-orange-500">{formatMoney(s.total_interest)}</div>
+            <div className="bg-white rounded-lg border border-gray-100 p-4 flex flex-col justify-center">
+              <div className="text-xs text-gray-400">下一期待还</div>
+              <div className="text-xl font-bold text-gray-800">{s.next_due_amount ? formatMoney(s.next_due_amount) : '—'}</div>
+              <div className="text-[11px] text-gray-400">{formatDate(s.next_due_date) || '暂无待还期次'}</div>
             </div>
           </div>
 
