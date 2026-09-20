@@ -90,7 +90,7 @@ function Money({ value, className = '', small = false }) {
   const unitCls = small ? 'text-[10px] font-medium text-gray-400' : 'text-xs font-medium text-gray-400';
   const useWan = Math.abs(n) >= 10000;
   const num = useWan
-    ? (n / 10000).toFixed(3)
+    ? parseFloat((n / 10000).toFixed(3))
     : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const unit = useWan ? '万' : '元';
   return (
@@ -1028,7 +1028,6 @@ export default function FinancePage() {
           <div className="bg-white rounded-lg border border-gray-100 p-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><span className="text-gray-400">放款日：</span>{formatDate(loanDetail.start_date)}</div>
-              <div><span className="text-gray-400">还款日：</span>每月{loanDetail.repayment_day}号</div>
             </div>
             <NotesBlock notes={loanDetail.notes} />
           </div>
@@ -1101,16 +1100,12 @@ export default function FinancePage() {
             />
           </div>
 
-          {/* 汇总卡片 · 下一期待还（含还款日） */}
+          {/* 汇总卡片 · 下一期待还 */}
           <div className="bg-white rounded-lg border border-gray-100 p-4 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs text-gray-400">下一期待还</div>
               <div className="text-xl font-bold text-gray-800">{s.next_due_amount != null ? <Money value={s.next_due_amount} /> : '—'}</div>
               <div className="text-[11px] text-gray-400">{formatDate(s.next_due_date) || '暂无待还期次'}</div>
-            </div>
-            <div className="text-right flex-shrink-0">
-              <div className="text-xs text-gray-400">还款日</div>
-              <div className="text-sm font-medium text-gray-700">每月 {loanDetail.repayment_day} 号</div>
             </div>
           </div>
 
@@ -1385,12 +1380,9 @@ export default function FinancePage() {
                         <div className="font-medium text-gray-700"><Money value={loan.principal} /></div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-400">年利率 / IRR</div>
+                        <div className="text-xs text-gray-400">实际年化(IRR)</div>
                         <div className="font-medium text-gray-700">
-                          {loan.annual_rate}%
-                          <span className="text-xs text-gray-400">
-                            {loan.effective_rate != null ? ' / ' + loan.effective_rate.toFixed(2) + '%' : ''}
-                          </span>
+                          {loan.effective_rate != null ? loan.effective_rate.toFixed(2) + '%' : '—'}
                         </div>
                       </div>
                       <div>
