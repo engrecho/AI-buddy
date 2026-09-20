@@ -82,12 +82,31 @@ function daysUntil(dateStr) {
   return Math.round((target - now) / 86400000);
 }
 
+// 金额以「万」为单位展示：数字放大、单位小字，便于一眼读数
+function Money({ value, className = '', small = false }) {
+  if (value == null || isNaN(value)) return <span className={className}>—</span>;
+  const n = Number(value);
+  const numCls = small ? 'text-sm font-bold' : 'text-2xl font-bold align-baseline';
+  const unitCls = small ? 'text-[10px] font-medium text-gray-400' : 'text-xs font-medium text-gray-400';
+  const useWan = Math.abs(n) >= 10000;
+  const num = useWan
+    ? (n / 10000).toFixed(2)
+    : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const unit = useWan ? '万' : '元';
+  return (
+    <span className={className}>
+      <span className={numCls}>{num}</span>
+      <span className={`${unitCls} ml-0.5`}>{unit}</span>
+    </span>
+  );
+}
+
 // 汇总区复用的小方块
 function StatCard({ label, value, sub, accent = 'text-gray-800' }) {
   return (
     <div className="bg-white rounded-lg border border-gray-100 p-3">
       <div className="text-xs text-gray-400">{label}</div>
-      <div className={`text-lg font-bold ${accent}`}>{value}</div>
+      <div className={`mt-0.5 ${accent}`}>{value}</div>
       {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
     </div>
   );
@@ -1024,14 +1043,14 @@ export default function FinancePage() {
               <div className="mt-3 pt-3 border-t border-gray-50">
                 <div className="text-xs text-gray-400 mb-1">本金已还进度</div>
                 <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <span className="text-xl font-bold text-gray-800">{formatMoney(principalPaid)}</span>
-                  <span className="text-xs font-bold text-gray-600">/ 共 {formatMoney(totalPrincipal)}</span>
+                  <Money value={principalPaid} className="text-gray-800" />
+                  <span className="text-xs font-bold text-gray-600">/ 共 <Money value={totalPrincipal} className="text-gray-600" /></span>
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-gray-100 overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${principalPct}%`, backgroundColor: '#bbea3b' }} />
                 </div>
                 <div className="mt-1 text-[11px] text-gray-400">已还本金 {principalPct}%</div>
-                <div className="mt-0.5 text-[11px] text-orange-400">总利息 {formatMoney(totalInterest)}</div>
+                <div className="mt-0.5 text-[11px] text-orange-400">总利息 <Money value={totalInterest} small /></div>
               </div>
             </div>
 
@@ -1064,12 +1083,12 @@ export default function FinancePage() {
           <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
             <StatCard
               label="已还金额"
-              value={formatMoney(s.total_paid)}
+              value={<Money value={s.total_paid} />}
               sub={`已还本金 ${formatMoney(principalPaid)} + 已还利息 ${formatMoney(paidInterest)}`}
             />
             <StatCard
               label="待还金额"
-              value={formatMoney(remainingAmount)}
+              value={<Money value={remainingAmount} />}
               accent="text-orange-600"
               sub={`本金 ${formatMoney(remainingPrincipal)} + 利息 ${formatMoney(remainingInterest)}`}
             />
@@ -1079,7 +1098,7 @@ export default function FinancePage() {
           <div className="bg-white rounded-lg border border-gray-100 p-4 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs text-gray-400">下一期待还</div>
-              <div className="text-xl font-bold text-gray-800">{s.next_due_amount ? formatMoney(s.next_due_amount) : '—'}</div>
+              <div className="text-xl font-bold text-gray-800">{s.next_due_amount != null ? <Money value={s.next_due_amount} /> : '—'}</div>
               <div className="text-[11px] text-gray-400">{formatDate(s.next_due_date) || '暂无待还期次'}</div>
             </div>
             <div className="text-right flex-shrink-0">
@@ -1288,17 +1307,17 @@ export default function FinancePage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <div className="text-xs text-gray-400 mb-0.5">本月应还</div>
-                    <div className="text-base font-bold text-gray-800">{formatMoney(loanSummary.month_due_total)}</div>
+                    <div className="text-base font-bold text-gray-800"><Money value={loanSummary.month_due_total} /></div>
                     <div className="text-[11px] text-gray-400">共 {loanSummary.month_due_count ?? 0} 期</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-400 mb-0.5">本月已还</div>
-                    <div className="text-base font-bold text-green-600">{formatMoney(loanSummary.month_paid_total)}</div>
+                    <div className="text-base font-bold text-green-600"><Money value={loanSummary.month_paid_total} /></div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-400 mb-0.5">本月待还</div>
                     <div className="text-base font-bold text-orange-600">
-                      {formatMoney(Math.max(0, Math.round(((loanSummary.month_due_total || 0) - (loanSummary.month_paid_total || 0)) * 100) / 100))}
+                      <Money value={Math.max(0, Math.round(((loanSummary.month_due_total || 0) - (loanSummary.month_paid_total || 0)) * 100) / 100)} />
                     </div>
                   </div>
                 </div>
@@ -1356,7 +1375,7 @@ export default function FinancePage() {
                     <div className="grid grid-cols-3 gap-2 text-sm">
                       <div>
                         <div className="text-xs text-gray-400">本金</div>
-                        <div className="font-medium text-gray-700">{formatMoney(loan.principal)}</div>
+                        <div className="font-medium text-gray-700"><Money value={loan.principal} /></div>
                       </div>
                       <div>
                         <div className="text-xs text-gray-400">年利率 / IRR</div>
@@ -1376,7 +1395,7 @@ export default function FinancePage() {
                     {nextDue && nextDue.next_due_date && (
                       <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between text-xs">
                         <span className="text-gray-400">下次应还 {formatDate(nextDue.next_due_date)}</span>
-                        <span className="font-medium text-orange-600">{formatMoney(nextDue.next_due_amount)}</span>
+                        <span className="font-medium text-orange-600"><Money value={nextDue.next_due_amount} /></span>
                       </div>
                     )}
                   </div>
