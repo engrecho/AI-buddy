@@ -1031,6 +1031,7 @@ export default function FinancePage() {
                   <div className="h-full rounded-full" style={{ width: `${principalPct}%`, backgroundColor: '#bbea3b' }} />
                 </div>
                 <div className="mt-1 text-[11px] text-gray-400">已还本金 {principalPct}%</div>
+                <div className="mt-0.5 text-[11px] text-orange-400">总利息 {formatMoney(totalInterest)}</div>
               </div>
             </div>
 
@@ -1060,7 +1061,7 @@ export default function FinancePage() {
           </div>
 
           {/* 汇总卡片 · 金额明细 */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
             <StatCard
               label="已还金额"
               value={formatMoney(s.total_paid)}
@@ -1072,7 +1073,6 @@ export default function FinancePage() {
               accent="text-orange-600"
               sub={`本金 ${formatMoney(remainingPrincipal)} + 利息 ${formatMoney(remainingInterest)}`}
             />
-            <StatCard label="总利息" value={formatMoney(totalInterest)} accent="text-orange-500" />
           </div>
 
           {/* 汇总卡片 · 下一期待还（含还款日） */}
