@@ -1999,7 +1999,7 @@ app.get('/api/version', async (req, res) => {
 // ── 还款计划计算工具 ─────────────────────────────────────
 const LOAN_MAX_TERM = 600; // 单笔贷款期数上限，防止超大期数拖垮事件循环
 
-function validateLoanInputs({ principal, annual_rate, term_months, repayment_day, method }) {
+function validateLoanInputs({ principal, annual_rate, term_months, repayment_day, method, monthly_payment }) {
   const p = parseFloat(principal);
   const r = annual_rate === '' || annual_rate == null ? 0 : parseFloat(annual_rate);
   const n = parseInt(term_months, 10);
@@ -2009,8 +2009,13 @@ function validateLoanInputs({ principal, annual_rate, term_months, repayment_day
   if (!Number.isFinite(r) || r < 0 || r > 100) errs.push('年利率须在 0~100 之间');
   if (!Number.isInteger(n) || n <= 0 || n > LOAN_MAX_TERM) errs.push(`期数须为 1~${LOAN_MAX_TERM} 的整数`);
   if (!Number.isInteger(day) || day < 1 || day > 31) errs.push('每月还款日须为 1~31');
-  if (method && !['equal_payment', 'equal_principal'].includes(method)) errs.push('还款方式无效');
-  return { p, r, n, day, errs };
+  if (method && !['equal_payment', 'equal_principal', 'fixed_payment'].includes(method)) errs.push('还款方式无效');
+  let mp = 0;
+  if (method === 'fixed_payment') {
+    mp = parseFloat(monthly_payment);
+    if (!Number.isFinite(mp) || mp <= 0) errs.push('固定月供应为正数');
+  }
+  return { p, r, n, day, mp, errs };
 }
 
 function validateCustomSchedule(amounts, termMonths) {
@@ -2050,10 +2055,11 @@ function fmtLocalDate(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function calculatePaymentSchedule(principal, annualRate, termMonths, method, startDate, repaymentDay) {
+function calculatePaymentSchedule(principal, annualRate, termMonths, method, startDate, repaymentDay, fixedMonthly) {
   const monthlyRate = annualRate / 12 / 100;
   const baseDate = new Date(startDate);
   const isEqualPayment = method === 'equal_payment' && monthlyRate > 0;
+  const isFixedPayment = method === 'fixed_payment' && fixedMonthly > 0;
   const factor = isEqualPayment ? Math.pow(1 + monthlyRate, termMonths) : 0;
   const dueAmountFull = isEqualPayment ? (principal * monthlyRate * factor) / (factor - 1) : 0;
   const perPeriodPrincipal = principal / termMonths;
@@ -2068,16 +2074,30 @@ function calculatePaymentSchedule(principal, annualRate, termMonths, method, sta
     const daysInMonth = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0).getDate();
     const dueDate = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), Math.min(repaymentDay, daysInMonth));
     const isLast = i === termMonths;
-    let principalAmount, interestAmount;
+    let principalAmount, interestAmount, dueAmount;
+    const interest = remaining * monthlyRate;
 
     if (isEqualPayment) {
       // 等额本息：每期金额固定，本金 = 每期金额 - 当期利息
-      interestAmount = remaining * monthlyRate;
+      interestAmount = interest;
       principalAmount = dueAmountFull - interestAmount;
+      dueAmount = dueAmountFull;
+    } else if (isFixedPayment) {
+      // 自由还款（固定月供）：每期还款额固定，本金 = 月供 - 当期利息；末期结清剩余本金
+      if (isLast) {
+        principalAmount = remaining;
+        interestAmount = interest;
+        dueAmount = principalAmount + interest;
+      } else {
+        interestAmount = interest;
+        principalAmount = fixedMonthly - interestAmount;
+        dueAmount = fixedMonthly;
+      }
     } else {
       // 等额本金 / 零利率：本金按期均摊
       principalAmount = perPeriodPrincipal;
-      interestAmount = remaining * monthlyRate;
+      interestAmount = interest;
+      dueAmount = principalAmount + interest;
     }
     remaining -= principalAmount;
 
@@ -2094,7 +2114,7 @@ function calculatePaymentSchedule(principal, annualRate, termMonths, method, sta
     schedule.push({
       installment: i,
       due_date: fmtLocalDate(dueDate),
-      due_amount: round2(principalAmount + interestAmount),
+      due_amount: round2(dueAmount),
       principal_amount: principalAmount,
       interest_amount: interestAmount,
       paid_amount: 0,
@@ -2161,7 +2181,7 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
   if (!start_date) {
     return res.json({ data: null, error: { message: '缺少必填字段: start_date' } });
   }
-  const v = validateLoanInputs({ principal, annual_rate, term_months, repayment_day, method: repayment_method });
+  const v = validateLoanInputs({ principal, annual_rate, term_months, repayment_day, method: repayment_method, monthly_payment: req.body.monthly_payment });
   if (v.errs.length > 0) {
     return res.json({ data: null, error: { message: v.errs.join('；') } });
   }
@@ -2171,10 +2191,10 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
     await conn.beginTransaction();
     const [result] = await conn.query(
       `INSERT INTO loans (user_id, name, loan_type, institution, principal, annual_rate,
-        term_months, repayment_method, start_date, repayment_day, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        term_months, repayment_method, start_date, repayment_day, monthly_payment, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [req.user.id, String(name).trim(), loan_type || 'other', institution || null, v.p,
-       v.r, v.n, repayment_method || 'equal_payment', start_date, v.day, notes || null]
+       v.r, v.n, repayment_method || 'equal_payment', start_date, v.day, monthly_payment || null, notes || null]
     );
 
     const loanId = result.insertId;
@@ -2191,7 +2211,7 @@ app.post('/api/loans/create', authMiddleware, async (req, res) => {
       schedule = buildCustomSchedule(custom_schedule, start_date, v.day);
     } else {
       // 自动计算
-      schedule = calculatePaymentSchedule(v.p, v.r, v.n, repayment_method || 'equal_payment', start_date, v.day);
+      schedule = calculatePaymentSchedule(v.p, v.r, v.n, repayment_method || 'equal_payment', start_date, v.day, v.mp);
     }
 
     await batchInsertPayments(conn, req.user.id, loanId, schedule);
@@ -2264,12 +2284,12 @@ app.post('/api/loans/:id/rebuild-schedule', authMiddleware, async (req, res) => 
       const v = validateLoanInputs({
         principal: loan.principal, annual_rate: loan.annual_rate,
         term_months: loan.term_months, repayment_day: loan.repayment_day,
-        method: loan.repayment_method,
+        method: loan.repayment_method, monthly_payment: loan.monthly_payment,
       });
       if (v.errs.length > 0) {
         return res.json({ data: null, error: { message: '贷款数据无效：' + v.errs.join('；') } });
       }
-      schedule = calculatePaymentSchedule(v.p, v.r, v.n, loan.repayment_method || 'equal_payment', loan.start_date, v.day);
+      schedule = calculatePaymentSchedule(v.p, v.r, v.n, loan.repayment_method || 'equal_payment', loan.start_date, v.day, loan.monthly_payment || 0);
     }
 
     // 删除旧计划，插入新计划（同一事务，失败不留脏数据）

@@ -37,7 +37,7 @@ const LOAN_TYPES = {
 };
 
 const REPAYMENT_METHODS = {
-  equal_payment: '等额本息', equal_principal: '等额本金',
+  equal_payment: '等额本息', equal_principal: '等额本金', fixed_payment: '自由还款(固定月供)',
 };
 
 const LOAN_STATUS = {
@@ -90,7 +90,7 @@ function Money({ value, className = '', small = false }) {
   const unitCls = small ? 'text-[10px] font-medium text-gray-400' : 'text-xs font-medium text-gray-400';
   const useWan = Math.abs(n) >= 10000;
   const num = useWan
-    ? (n / 10000).toFixed(2)
+    ? (n / 10000).toFixed(3)
     : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const unit = useWan ? '万' : '元';
   return (
@@ -150,7 +150,7 @@ function NotesBlock({ notes }) {
 function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
   const [form, setForm] = useState({
     name: '', loan_type: 'other', institution: '', principal: '',
-    annual_rate: '', term_months: '', repayment_method: 'equal_payment',
+    annual_rate: '', term_months: '', repayment_method: 'equal_payment', monthly_payment: '',
     start_date: todayLocal(), repayment_day: 1, notes: '',
   });
   // 还款计划模式：auto（自动计算）| manual（手动录入）
@@ -317,6 +317,13 @@ function LoanFormDialog({ open, onClose, onSubmit, initial, initialPayments }) {
               </Select>
             </div>
           </div>
+          {form.repayment_method === 'fixed_payment' && (
+            <div className="pt-3 border-t border-gray-100">
+              <label className="text-xs text-gray-500 mb-1 block">固定月供 (元) *</label>
+              <Input type="number" min="1" value={form.monthly_payment} onChange={e => set('monthly_payment', e.target.value)} placeholder="银行锁定的每月还款额，如：2461" />
+              <p className="text-[11px] text-gray-400 mt-1">自由还款：月供固定，按真实利率计息、本金递减（常见于公积金）</p>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">放款日 *</label>
