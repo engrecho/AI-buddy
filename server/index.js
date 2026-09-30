@@ -2038,7 +2038,7 @@ app.get('/api/skill/download', authMiddleware, async (req, res) => {
     const cacheFile = path.join(os.tmpdir(), `buddy-skill-${meta.version}.zip`);
     if (!fs.existsSync(cacheFile)) {
       execSync(
-        `cd "${SKILL_DIR}" && zip -r -q -X "${cacheFile}" . -x "node_modules/*" -x "*.zip"`,
+        `cd "${SKILL_DIR}" && zip -r -q -X "${cacheFile}" . -x "node_modules/*" -x "*.zip" -x "downloads/*" -x "data/*"`,
         { timeout: 30000 }
       );
     }
