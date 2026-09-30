@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { CheckSquare, FileText, Zap, BookOpen, ArrowRight, Circle, Loader2, CheckCircle2, Wallet, Shield, AlertCircle, AlertTriangle } from "lucide-react";
+import { CheckSquare, FileText, Zap, BookOpen, ArrowRight, Circle, Loader2, CheckCircle2, Wallet, Shield, AlertCircle, AlertTriangle, Heart, Lock, Settings, Bot, Download } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import PullToRefresh from "@/components/PullToRefresh";
 
@@ -13,6 +14,18 @@ const STATUS_LABEL = { todo: "待办", in_progress: "进行中", done: "已完�
 const GREEN = "#5a7a00";
 const GREEN_DARK = "#2d4a00";
 const DAY = 86400000;
+
+// ── 功能宫格（覆盖产品当前全部模块） ──────────────────────────
+const FEATURE_GRID = [
+  { id: "tasks", label: "任务", icon: CheckSquare, statKey: "tasks" },
+  { id: "memos", label: "备忘", icon: FileText, statKey: "memos" },
+  { id: "reading", label: "阅读", icon: BookOpen, statKey: "reading" },
+  { id: "quicknotes", label: "随记", icon: Zap, statKey: "notes" },
+  { id: "health", label: "健康", icon: Heart, statKey: null },
+  { id: "finance", label: "财务", icon: Wallet, statKey: null },
+  { id: "vault", label: "保险箱", icon: Lock, statKey: null },
+  { id: "settings", label: "设置", icon: Settings, statKey: null },
+];
 
 const fmtMoney = (n) =>
   `¥${(Number(n) || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -57,13 +70,15 @@ const greeting = () => {
   return "晚上好";
 };
 
-const DashboardPage = ({ onNavigate }) => {
+const DashboardPage = ({ onNavigate, onOpenSettings }) => {
+  const { user } = useAuth();
   const [stats, setStats] = useState({ tasks: 0, memos: 0, notes: 0, reading: 0 });
   const [recentTasks, setRecentTasks] = useState([]);
   const [recentNotes, setRecentNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [financeSummary, setFinanceSummary] = useState(null);
   const [insuranceSummary, setInsuranceSummary] = useState(null);
+  const [skillInfo, setSkillInfo] = useState(null);
 
   useEffect(() => { fetchStats(); }, []);
 
@@ -83,16 +98,18 @@ const DashboardPage = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
-    // 并行加载财务/保险汇总（不阻塞主统计）
+    // 并行加载财务/保险汇总、SKILL 版本（不阻塞主统计）
     try {
       const token = localStorage.getItem("ai_buddy_token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const [loanRes, insRes] = await Promise.all([
+      const [loanRes, insRes, skillRes] = await Promise.all([
         fetch("/api/loans/summary", { headers }).then((r) => r.json()).catch(() => null),
         fetch("/api/insurances/summary", { headers }).then((r) => r.json()).catch(() => null),
+        fetch("/api/skill/info", { headers }).then((r) => r.json()).catch(() => null),
       ]);
       setFinanceSummary(loanRes?.data || null);
       setInsuranceSummary(insRes?.data || null);
+      setSkillInfo(skillRes?.data || null);
     } catch {}
   };
 
@@ -118,11 +135,25 @@ const DashboardPage = ({ onNavigate }) => {
   } else {
     heroPrimary = "今天没有逾期和临期事项，状态良好 🎉";
   }
-  const heroSecondary = `待办 ${stats.tasks} · 待读 ${stats.reading} · 随记 ${stats.notes}`;
+  const nickname = user?.nickname || user?.username || "";
+
+  const statFor = (statKey) => {
+    if (!statKey || loading) return null;
+    const v = stats[statKey];
+    return typeof v === "number" ? v : null;
+  };
 
   const Skeleton = ({ h = "h-4", w = "w-full", className = "" }) => (
     <div className={`${h} ${w} bg-gray-100 rounded animate-pulse ${className}`} />
   );
+
+  const handleGridClick = (id) => {
+    if (id === "settings") {
+      onOpenSettings?.();
+    } else {
+      onNavigate(id);
+    }
+  };
 
   return (
     <PullToRefresh onRefresh={fetchStats} className="h-full">
@@ -137,9 +168,10 @@ const DashboardPage = ({ onNavigate }) => {
             <p className="text-xs" style={{ color: "#4a6800" }}>
               {new Date().toLocaleDateString("zh-CN", { weekday: "long", month: "long", day: "numeric" })}
             </p>
-            <h2 className="text-xl font-bold mt-0.5" style={{ color: GREEN_DARK }}>{greeting()}</h2>
+            <h2 className="text-xl font-bold mt-0.5" style={{ color: GREEN_DARK }}>
+              {greeting()}{nickname ? `，${nickname}` : ""}
+            </h2>
             <p className="text-sm font-medium mt-2 leading-relaxed" style={{ color: "#3a5500" }}>{heroPrimary}</p>
-            <p className="text-xs mt-1.5" style={{ color: "#4a6800" }}>{heroSecondary}</p>
           </div>
 
           {/* 2. 紧急提醒（仅当有过期/临期） */}
@@ -190,7 +222,30 @@ const DashboardPage = ({ onNavigate }) => {
             </div>
           )}
 
-          {/* 3. 今日资金 */}
+          {/* 3. 功能宫格（全部模块入口 + 实时计数） */}
+          <div className="bg-white rounded-xl border border-gray-100 p-3">
+            <div className="grid grid-cols-4 gap-1">
+              {FEATURE_GRID.map(({ id, label, icon: Icon, statKey }) => {
+                const count = statFor(statKey);
+                return (
+                  <button key={id} onClick={() => handleGridClick(id)}
+                    className="relative flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-gray-50/70 active:scale-[0.96] transition-all">
+                    <div className="relative">
+                      <Icon className="w-5 h-5" style={{ color: GREEN }} />
+                      {count !== null && count > 0 && (
+                        <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                          {count > 99 ? "99+" : count}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-600">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. 今日资金 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button onClick={() => onNavigate("finance")}
               className="bg-white rounded-xl border border-gray-100 p-4 text-left hover:shadow-md active:scale-[0.99] transition-all">
@@ -233,7 +288,7 @@ const DashboardPage = ({ onNavigate }) => {
             </button>
           </div>
 
-          {/* 4. 我的待办 + 5. 最近随记 */}
+          {/* 5. 我的待办 + 最近随记 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* 我的待办 */}
             <div className="bg-white rounded-xl border border-gray-100">
@@ -293,27 +348,27 @@ const DashboardPage = ({ onNavigate }) => {
             </div>
           </div>
 
-          {/* 6. 速览条（备忘录 / 随记 / 待读） */}
-          <div className="bg-white rounded-xl border border-gray-100 grid grid-cols-3 divide-x divide-gray-50">
-            <button onClick={() => onNavigate("memos")}
-              className="flex flex-col items-center gap-1 py-3.5 hover:bg-gray-50/60 active:scale-[0.98] transition-all">
-              <FileText className="w-4 h-4 text-gray-400" />
-              <span className="text-lg font-bold text-gray-800">{loading ? "—" : stats.memos}</span>
-              <span className="text-xs text-gray-400">备忘录</span>
-            </button>
-            <button onClick={() => onNavigate("quicknotes")}
-              className="flex flex-col items-center gap-1 py-3.5 hover:bg-gray-50/60 active:scale-[0.98] transition-all">
-              <Zap className="w-4 h-4 text-gray-400" />
-              <span className="text-lg font-bold text-gray-800">{loading ? "—" : stats.notes}</span>
-              <span className="text-xs text-gray-400">随记</span>
-            </button>
-            <button onClick={() => onNavigate("reading")}
-              className="flex flex-col items-center gap-1 py-3.5 hover:bg-gray-50/60 active:scale-[0.98] transition-all">
-              <BookOpen className="w-4 h-4 text-gray-400" />
-              <span className="text-lg font-bold text-gray-800">{loading ? "—" : stats.reading}</span>
-              <span className="text-xs text-gray-400">待读</span>
-            </button>
-          </div>
+          {/* 6. AI 助手 SKILL 卡（版本随产品同步，点击进入下载中心） */}
+          <button onClick={() => onOpenSettings?.("skill")}
+            className="w-full bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3 text-left hover:shadow-md active:scale-[0.99] transition-all">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "rgba(187,234,59,0.35)" }}>
+              <Bot className="w-5 h-5" style={{ color: GREEN_DARK }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium text-gray-900">AI 助手 SKILL</span>
+                {skillInfo?.version && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono">v{skillInfo.version}</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5 truncate">
+                {skillInfo?.updated_at
+                  ? `随产品同步更新 · 最近更新于 ${fmtMD(skillInfo.updated_at)} · 点击下载`
+                  : "把任务、备忘、阅读交给你的 AI 搭档 · 点击获取"}
+              </p>
+            </div>
+            <Download className="w-4 h-4 text-gray-300 flex-shrink-0" />
+          </button>
 
         </div>
       </div>

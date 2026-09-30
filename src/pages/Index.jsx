@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
-import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2, Heart, Lock, Wallet } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2, Heart, Lock, Wallet, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
@@ -10,6 +10,7 @@ const DashboardPage = lazy(() => import('./DashboardPage'));
 const HealthPage = lazy(() => import('./HealthPage'));
 const VaultPage = lazy(() => import('./VaultPage'));
 const FinancePage = lazy(() => import('./FinancePage'));
+const QuickNotesPage = lazy(() => import('./QuickNotesPage'));
 const ConfigContent = lazy(() => import('@/components/ConfigSection').then(m => ({ default: m.ConfigContent })));
 const NoteView = lazy(() => import('@/components/NoteView'));
 const SettingsCenter = lazy(() => import('@/pages/SettingsCenter').then(m => ({ default: m.SettingsCenter })));
@@ -30,6 +31,7 @@ const navItems = [
   { id: 'tasks', label: '任务', icon: CheckSquare },
   { id: 'memos', label: '备忘', icon: FileText },
   { id: 'reading', label: '阅读', icon: BookOpen },
+  { id: 'quicknotes', label: '随记', icon: Zap },
   { id: 'health', label: '健康', icon: Heart },
   { id: 'finance', label: '财务', icon: Wallet },
   { id: 'vault', label: '保险箱', icon: Lock },
@@ -40,6 +42,7 @@ const pageTitles = {
   tasks: '任务',
   memos: '备忘',
   reading: '阅读中心',
+  quicknotes: '随记',
   health: '健康档案',
   finance: '财务管理',
   vault: '密码保险箱',
@@ -470,12 +473,6 @@ const Index = () => {
       );
     }
     switch (activeTab) {
-      case 'dashboard':
-        return (
-          <Suspense fallback={<TabLoader />}>
-            <DashboardPage onNavigate={handleNavClick} />
-          </Suspense>
-        );
       case 'tasks':
         return (
           <Suspense fallback={<TabLoader />}>
@@ -492,6 +489,12 @@ const Index = () => {
         return (
           <Suspense fallback={<TabLoader />}>
             <ReadingHub initialReadingId={pendingReadingId} onInitialReadingConsumed={() => setPendingReadingId(null)} />
+          </Suspense>
+        );
+      case 'quicknotes':
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <QuickNotesPage />
           </Suspense>
         );
       case 'health':
@@ -512,10 +515,11 @@ const Index = () => {
             <FinancePage />
           </Suspense>
         );
+      case 'dashboard':
       default:
         return (
           <Suspense fallback={<TabLoader />}>
-            <DashboardPage onNavigate={handleNavClick} />
+            <DashboardPage onNavigate={handleNavClick} onOpenSettings={openSettings} />
           </Suspense>
         );
     }
@@ -636,7 +640,7 @@ const Index = () => {
         className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch z-30'
         style={{ height: 'calc(56px + env(safe-area-inset-bottom, 0px) + 8px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
       >
-        {navItems.filter(({ id }) => id !== 'dashboard').map(({ id, label, icon: Icon }) => {
+        {navItems.filter(({ id }) => id !== 'dashboard' && id !== 'quicknotes').map(({ id, label, icon: Icon }) => {
           const active = activeTab === id && !configOpen && !settingsOpen;
           return (
             <button key={id} onClick={() => handleNavClick(id)} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${active ? 'text-gray-900' : 'text-gray-400'}`}>

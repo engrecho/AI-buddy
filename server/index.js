@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import crypto from 'crypto';
 import multer from 'multer';
 import sharp from 'sharp';
@@ -1984,11 +1985,68 @@ app.get('/api/version', async (req, res) => {
         commit,
         commit_date: commitDate,
         server_time: new Date().toISOString(),
+        skill: readSkillMeta(),
       },
       error: null,
     });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// buddy-skill 下载中心（SKILL 包随产品仓库同步更新，设置中心提供下载）
+// ════════════════════════════════════════════════════════════
+const SKILL_DIR = path.join(__dirname, '..', 'buddy-skill');
+
+function readSkillMeta() {
+  let version = 'unknown';
+  let description = '';
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(SKILL_DIR, 'package.json'), 'utf8'));
+    version = pkg.version || version;
+    description = pkg.description || '';
+  } catch {}
+  let updated_at = null;
+  try {
+    updated_at = execSync('git log -1 --format=%cI -- buddy-skill', {
+      cwd: path.join(__dirname, '..'), encoding: 'utf8',
+    }).trim() || null;
+  } catch {}
+  // SKILL.md 正文简介（# buddy-skill 标题后的第一个非空行）
+  let summary = '';
+  try {
+    const md = fs.readFileSync(path.join(SKILL_DIR, 'SKILL.md'), 'utf8');
+    const after = md.split('# buddy-skill')[1] || '';
+    summary = after.split('\n').map((s) => s.trim()).find(Boolean) || '';
+  } catch {}
+  return { name: 'buddy-skill', version, description, updated_at, summary };
+}
+
+// SKILL 版本信息（设置中心「AI SKILL」板块 + 首页 SKILL 卡展示）
+app.get('/api/skill/info', authMiddleware, async (req, res) => {
+  return res.json({ data: readSkillMeta(), error: null });
+});
+
+// SKILL 包下载（zip 动态打包，排除 node_modules；按版本缓存于系统临时目录）
+app.get('/api/skill/download', authMiddleware, async (req, res) => {
+  try {
+    if (!fs.existsSync(path.join(SKILL_DIR, 'SKILL.md'))) {
+      return res.status(404).json({ data: null, error: { message: 'SKILL 包不存在' } });
+    }
+    const meta = readSkillMeta();
+    const cacheFile = path.join(os.tmpdir(), `buddy-skill-${meta.version}.zip`);
+    if (!fs.existsSync(cacheFile)) {
+      execSync(
+        `cd "${SKILL_DIR}" && zip -r -q -X "${cacheFile}" . -x "node_modules/*" -x "*.zip"`,
+        { timeout: 30000 }
+      );
+    }
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="buddy-skill-${meta.version}.zip"`);
+    fs.createReadStream(cacheFile).pipe(res);
+  } catch (err) {
+    return res.status(500).json({ data: null, error: { message: 'SKILL 打包失败：' + err.message } });
   }
 });
 

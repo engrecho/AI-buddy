@@ -7,6 +7,7 @@ import {
   ArrowLeft, User as UserIcon, Lock, Key, Users, Tag, FolderOpen,
   Save, LogOut, Copy, Trash2, Plus, Eye, EyeOff, AlertTriangle,
   CheckCircle2, Loader2, Camera, ChevronRight, HeartPulse, Info,
+  Bot, Download,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ const SECTIONS = [
   { id: 'profile', label: '个人资料', icon: UserIcon },
   { id: 'password', label: '修改密码', icon: Lock },
   { id: 'api-key', label: 'API Key', icon: Key },
+  { id: 'skill', label: 'AI SKILL', icon: Bot },
   { id: 'members', label: '人员', icon: Users },
   { id: 'family', label: '家庭成员', icon: HeartPulse },
   { id: 'tags', label: '标签', icon: Tag },
@@ -106,6 +108,7 @@ export function SettingsCenter({ onBack, defaultSection = null }) {
     if (section === 'profile') return <ProfilePanel user={user} login={login} />;
     if (section === 'password') return <PasswordPanel />;
     if (section === 'api-key') return <ApiKeyPanel />;
+    if (section === 'skill') return <SkillPanel />;
     if (section === 'members') return <MembersPanel />;
     if (section === 'family') return <FamilyMembersPanel />;
     if (section === 'tags') return <TagsPanel />;
@@ -169,6 +172,7 @@ function MobileSectionContent({ section, user, login }) {
   if (section === 'profile') return <ProfilePanel user={user} login={login} />;
   if (section === 'password') return <PasswordPanel />;
   if (section === 'api-key') return <ApiKeyPanel />;
+  if (section === 'skill') return <SkillPanel />;
   if (section === 'members') return <MembersPanel />;
   if (section === 'family') return <FamilyMembersPanel />;
   if (section === 'tags') return <TagsPanel />;
@@ -471,6 +475,104 @@ function ApiKeyPanel() {
   );
 }
 
+// ── AI SKILL 面板（下载中心：版本随产品仓库同步更新） ────────────
+function SkillPanel() {
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/skill/info', { credentials: 'include' });
+        const json = await res.json();
+        if (json.data) setInfo(json.data);
+      } catch (e) { console.error('加载 SKILL 信息失败', e); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  const handleDownload = () => {
+    setDownloading(true);
+    // 浏览器直下（cookie 自动携带）；完成后恢复按钮状态
+    setTimeout(() => setDownloading(false), 2500);
+    window.location.href = '/api/skill/download';
+  };
+
+  const fmt = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
+  };
+
+  return (
+    <div className='space-y-4'>
+      {/* SKILL 主卡片 */}
+      <div className='bg-white rounded-xl p-4 border border-gray-100 space-y-3'>
+        <div className='flex items-center gap-3'>
+          <div className='w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0' style={{ backgroundColor: 'rgba(187,234,59,0.35)' }}>
+            <Bot className='h-6 w-6' style={{ color: '#2d4a00' }} />
+          </div>
+          <div className='flex-1 min-w-0'>
+            <div className='flex items-center gap-2 flex-wrap'>
+              <span className='font-semibold text-gray-900'>buddy-skill</span>
+              {info?.version && (
+                <Badge variant='outline' className='text-[11px] py-0 font-mono text-[#5a7a00] border-[#bbea3b]'>
+                  v{info.version}
+                </Badge>
+              )}
+              <Badge variant='outline' className='text-[10px] py-0 text-green-600 border-green-300'>
+                <CheckCircle2 className='h-2.5 w-2.5 mr-0.5' />官方
+              </Badge>
+            </div>
+            <p className='text-xs text-gray-500 mt-0.5'>AI-Buddy 官方 AI 助手 SKILL</p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className='text-xs text-gray-500 py-2 text-center'>加载中...</div>
+        ) : (
+          <>
+            {info?.summary && (
+              <p className='text-xs text-gray-600 leading-relaxed bg-gray-50 rounded-lg p-3 line-clamp-3'>{info.summary}</p>
+            )}
+            <div className='flex justify-between items-center py-2 border-t border-gray-50'>
+              <span className='text-sm text-gray-500'>最近更新</span>
+              <span className='text-sm text-gray-800'>{fmt(info?.updated_at)}</span>
+            </div>
+
+            <Button onClick={handleDownload} disabled={downloading} className='w-full h-11 text-base border-0' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>
+              {downloading ? <Loader2 className='h-4 w-4 mr-2 animate-spin' /> : <Download className='w-4 h-4 mr-2' />}
+              {downloading ? '下载中...' : `下载 SKILL 包${info?.version ? ` (v${info.version})` : ''}`}
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* 安装说明 */}
+      <div className='bg-white rounded-xl p-4 border border-gray-100 space-y-2.5'>
+        <div className='font-medium text-gray-900 text-sm'>安装步骤</div>
+        {[
+          <>点击上方按钮下载 <code className='bg-gray-100 px-1 rounded'>buddy-skill-*.zip</code> 并解压</>,
+          <>把解压出的 <code className='bg-gray-100 px-1 rounded'>buddy-skill/</code> 目录放到你的 AI 工具技能目录（如 Claude 的 <code className='bg-gray-100 px-1 rounded'>~/.claude/skills/</code>）</>,
+          <>在本页「API Key」板块创建一个 Key</>,
+          <>在 SKILL 目录运行 <code className='bg-gray-100 px-1 rounded'>node index.js init</code>，按提示填入服务地址与 Key</>,
+          <>运行 <code className='bg-gray-100 px-1 rounded'>node index.js test</code> 显示「✓ 连接成功」即完成</>,
+        ].map((step, i) => (
+          <div key={i} className='flex gap-2.5 text-sm text-gray-600'>
+            <span className='w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0 mt-0.5' style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}>{i + 1}</span>
+            <span className='leading-relaxed'>{step}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className='text-[11px] text-gray-500 leading-relaxed p-3 bg-blue-50 border border-blue-200 rounded-lg'>
+        <strong className='text-blue-900'>保持更新：</strong>SKILL 包随产品仓库同步更新——本页展示的版本即服务端当前最新版。产品功能升级后重新下载解压覆盖即可，本地 <code className='bg-white px-1 rounded'>~/.buddy-skill/config.json</code> 中的 API Key 配置不受影响。
+      </div>
+    </div>
+  );
+}
+
 // ── 版本信息面板 ────────────────────────────────────────────────
 function AboutPanel() {
   const [info, setInfo] = useState(null);
@@ -516,10 +618,16 @@ function AboutPanel() {
               <span className='text-sm text-gray-500'>代码修改时间</span>
               <span className='text-sm text-gray-800'>{fmt(info.commit_date)}</span>
             </div>
-            <div className='flex justify-between items-center py-2'>
+            <div className='flex justify-between items-center py-2 border-b border-gray-50'>
               <span className='text-sm text-gray-500'>服务端时间</span>
               <span className='text-sm text-gray-800'>{fmt(info.server_time)}</span>
             </div>
+            {info.skill?.version && (
+              <div className='flex justify-between items-center py-2'>
+                <span className='text-sm text-gray-500'>buddy-skill 版本</span>
+                <span className='text-sm font-mono text-gray-800'>v{info.skill.version}</span>
+              </div>
+            )}
           </>
         ) : (
           <div className='text-xs text-gray-500 py-4 text-center'>版本信息加载失败</div>
