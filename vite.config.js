@@ -19,6 +19,11 @@ export default defineConfig({
     },
   },
   plugins: [react()],
+  define: {
+    __MEMO_ENTRY_HIDDEN__: JSON.stringify(
+      process.env.MEMO_ENTRY_HIDDEN === 'true'
+    ),
+  },
   build: {
     outDir: 'build',
     sourcemap: false,
