@@ -26,10 +26,14 @@ function TabLoader() {
   );
 }
 
+// ── 备忘入口开关（编译期注入，见 vite.config.js）──────────────
+const MEMO_ENTRY_HIDDEN = __MEMO_ENTRY_HIDDEN__ === true;
+const SIYUAN_NOTE_URL = 'https://notes.bajiaolu.cn/';
+
 const navItems = [
   { id: 'dashboard', label: '统计', icon: LayoutDashboard },
   { id: 'tasks', label: '任务', icon: CheckSquare },
-  { id: 'memos', label: '备忘', icon: FileText },
+  { id: 'memos', label: '备忘', icon: FileText, hidden: MEMO_ENTRY_HIDDEN },
   { id: 'reading', label: '阅读', icon: BookOpen },
   { id: 'quicknotes', label: '随记', icon: Zap },
   { id: 'health', label: '健康', icon: Heart },
@@ -593,7 +597,7 @@ const Index = () => {
         <aside className='hidden md:flex flex-col flex-shrink-0 bg-white border-r border-gray-100' style={{ width: 72 }}>
           {/* 主导航（不再包含梳理入口） */}
           <nav className='flex-1 flex flex-col items-center py-3 gap-1'>
-            {navItems.map(({ id, label, icon: Icon }) => {
+            {navItems.filter((it) => !it.hidden).map(({ id, label, icon: Icon }) => {
               const active = activeTab === id && !configOpen && !settingsOpen;
               return (
                 <button
@@ -640,7 +644,7 @@ const Index = () => {
         className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch z-30'
         style={{ height: 'calc(56px + env(safe-area-inset-bottom, 0px) + 8px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
       >
-        {navItems.filter(({ id }) => id !== 'dashboard' && id !== 'quicknotes').map(({ id, label, icon: Icon }) => {
+        {navItems.filter((it) => !it.hidden && it.id !== 'dashboard' && it.id !== 'quicknotes').map(({ id, label, icon: Icon }) => {
           const active = activeTab === id && !configOpen && !settingsOpen;
           return (
             <button key={id} onClick={() => handleNavClick(id)} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${active ? 'text-gray-900' : 'text-gray-400'}`}>
