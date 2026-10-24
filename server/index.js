@@ -2028,8 +2028,23 @@ app.get('/api/skill/info', authMiddleware, async (req, res) => {
   return res.json({ data: readSkillMeta(), error: null });
 });
 
-// SKILL 包下载（zip 动态打包，排除 node_modules；按版本缓存于系统临时目录）
-app.get('/api/skill/download', authMiddleware, async (req, res) => {
+// SKILL 下载鉴权：优先用 API Key（?api_key= 查询参数 或 X-API-Key 请求头），否则退回登录态(JWT Cookie)
+async function skillDownloadAuth(req, res, next) {
+  const apiKey = req.query.api_key || req.headers['x-api-key'];
+  if (apiKey) {
+    const result = await getUserByApiKey(apiKey);
+    if (result) {
+      req.user = result.user;
+      req.apiKeyId = result.api_key_id;
+      return next();
+    }
+    return res.status(401).json({ data: null, error: { message: 'API Key 无效或已过期' } });
+  }
+  return authMiddleware(req, res, next);
+}
+
+// SKILL 包下载（zip 动态打包，支持登录态或 API Key 鉴权；按版本缓存于系统临时目录）
+app.get('/api/skill/download', skillDownloadAuth, async (req, res) => {
   try {
     if (!fs.existsSync(path.join(SKILL_DIR, 'SKILL.md'))) {
       return res.status(404).json({ data: null, error: { message: 'SKILL 包不存在' } });

@@ -186,6 +186,13 @@ AI-buddy/
 
 ## 更新日志
 
+### v1.13.1 (2026-10-24)
+- **SKILL 下载支持 API Key 鉴权**：`GET /api/skill/download` 新增支持 `?api_key=` 查询参数与 `X-API-Key` 请求头（沿用 `getUserByApiKey`），与原登录态(JWT)并存，方便 AI 工具脚本化下载
+- **设置中心「AI SKILL」板块增强**：
+  - 新增「下载链接（含 API Key）」只读展示 + 一键复制，链接形如 `https://buddy.bajiaolu.cn/api/skill/download?api_key=你的Key`，可直接发给 Agent
+  - 新增「一键安装指令」文本框：自动内嵌下载链接与 API Key，给出 `curl` 下载 → `unzip` 解压 → `node index.js init/test` 的完整步骤，复制后粘贴给 Agent 即可自动安装
+  - 无 API Key 时给出明确引导（先去「API Key」板块创建），并禁用复制按钮
+
 ### v1.12.5 (2026-09-30)
 - **首页接待页全面改版**：新增「功能宫格」——任务/备忘/阅读/随记/健康/财务/保险箱/设置全部模块一屏直达，任务、备忘、阅读、随记带实时未处理计数角标；问候语带用户昵称；原底部速览条并入宫格消除重复
 - **随记（QuickNotes）修复上线**：修复接待页"最近随记/速览条"跳转到不存在 tab 的 bug；随记页面此前无任何入口，现已在 PC 侧边栏与首页宫格可达

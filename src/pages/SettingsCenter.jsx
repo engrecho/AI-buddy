@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -480,6 +480,8 @@ function SkillPanel() {
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [apiKey, setApiKey] = useState(null);
+  const [apiKeyState, setApiKeyState] = useState('loading'); // loading | ready | none
 
   useEffect(() => {
     (async () => {
@@ -489,6 +491,18 @@ function SkillPanel() {
         if (json.data) setInfo(json.data);
       } catch (e) { console.error('加载 SKILL 信息失败', e); }
       finally { setLoading(false); }
+      // 加载可用的 API Key 明文（用于生成带鉴权的下载链接 / 安装指令）
+      try {
+        const r1 = await fetch('/api/auth/api-keys', { credentials: 'include' });
+        const j1 = await r1.json();
+        const keys = (j1.data || []).filter((k) => k.is_active && !k.is_legacy);
+        if (keys.length) {
+          const r2 = await fetch(`/api/auth/api-keys/${keys[0].id}/reveal`, { credentials: 'include' });
+          const j2 = await r2.json();
+          if (j2.data?.api_key) { setApiKey(j2.data.api_key); setApiKeyState('ready'); return; }
+        }
+        setApiKeyState('none');
+      } catch (e) { console.error('加载 API Key 失败', e); setApiKeyState('none'); }
     })();
   }, []);
 
@@ -497,6 +511,38 @@ function SkillPanel() {
     // 浏览器直下（cookie 自动携带）；完成后恢复按钮状态
     setTimeout(() => setDownloading(false), 2500);
     window.location.href = '/api/skill/download';
+  };
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const downloadUrl = apiKey
+    ? `${origin}/api/skill/download?api_key=${apiKey}`
+    : `${origin}/api/skill/download`;
+
+  // 给 Agent 的一键安装指令（内嵌下载链接与 API Key，可直接复制粘贴执行）
+  const installText = useMemo(() => {
+    if (!apiKey) return '';
+    const v = info?.version || 'latest';
+    return [
+      '【AI-Buddy · buddy-skill 安装指令】',
+      '',
+      `把下面的 buddy-skill（v${v}）安装到你的技能目录，即可直接通过 API Key 读写你账号下的任务 / 备忘 / 阅读 / 随记等数据。`,
+      '',
+      '1) 下载（链接已内嵌你的 API Key，无需额外配置）：',
+      `curl -L "${downloadUrl}" -o buddy-skill.zip`,
+      '',
+      '2) 解压到技能目录（按你的 AI 工具调整路径，例如 Claude Code 的 ~/.claude/skills、Trae / Codex 的 skills 目录）：',
+      'unzip -o buddy-skill.zip -d buddy-skill && rm buddy-skill.zip',
+      '',
+      '3) 初始化并测试连接：',
+      'cd buddy-skill && node index.js init && node index.js test',
+      '',
+      '连接成功后该技能即可操作你的数据。详细说明见包内 SKILL.md。',
+    ].join('\n');
+  }, [apiKey, info?.version, downloadUrl]);
+
+  const copy = (text, ok = '已复制') => {
+    if (!text) { toast.error('暂无可复制内容'); return; }
+    navigator.clipboard.writeText(text).then(() => toast.success(ok), () => toast.error('复制失败'));
   };
 
   const fmt = (iso) => {
@@ -545,8 +591,42 @@ function SkillPanel() {
               {downloading ? <Loader2 className='h-4 w-4 mr-2 animate-spin' /> : <Download className='w-4 h-4 mr-2' />}
               {downloading ? '下载中...' : `下载 SKILL 包${info?.version ? ` (v${info.version})` : ''}`}
             </Button>
+
+            {/* 下载链接（含 API Key，可直接复制发给 Agent） */}
+            <div className='space-y-1.5 pt-1'>
+              <div className='flex items-center justify-between'>
+                <span className='text-xs text-gray-500'>下载链接{apiKey ? '（已含 API Key）' : '（未含授权）'}</span>
+                {apiKeyState === 'none' && (
+                  <span className='text-[11px] text-amber-600'>请先在「API Key」创建</span>
+                )}
+              </div>
+              <div className='flex items-center gap-1.5'>
+                <code className='flex-1 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-[11px] font-mono break-all line-clamp-2'>{downloadUrl}</code>
+                <Button size='sm' variant='ghost' className='h-8 w-8 p-0 flex-shrink-0' onClick={() => copy(downloadUrl, '下载链接已复制')}>
+                  <Copy className='h-3.5 w-3.5' />
+                </Button>
+              </div>
+            </div>
           </>
         )}
+      </div>
+
+      {/* 一键安装指令（给 Agent，内嵌 API Key） */}
+      <div className='bg-white rounded-xl p-4 border border-gray-100 space-y-2.5'>
+        <div className='flex items-center gap-2'>
+          <span className='font-medium text-gray-900 text-sm'>一键安装指令</span>
+          <Badge variant='outline' className='text-[10px] py-0 text-[#5a7a00] border-[#bbea3b]'>复制给 Agent</Badge>
+        </div>
+        <p className='text-[11px] text-gray-500 leading-relaxed'>
+          下方文本已内嵌你的下载链接与 API Key，直接复制粘贴给 AI 工具即可自动完成下载与安装。
+        </p>
+        <textarea readOnly value={installText} rows={11}
+          placeholder={apiKeyState === 'none' ? '尚未创建 API Key，无法生成安装指令。请先在「API Key」板块创建后再复制。' : '加载中...'}
+          className='w-full text-[11px] leading-relaxed font-mono bg-gray-50 border border-gray-200 rounded-lg p-3 resize-none focus:outline-none' />
+        <Button onClick={() => copy(installText, '安装指令已复制（含 API Key）')}
+          disabled={!apiKey} className='w-full h-10 text-sm border-0' style={{ backgroundColor: '#2d4a00', color: '#bbea3b' }}>
+          <Copy className='w-4 w-4 mr-2' /> 一键复制安装指令（含 API Key）
+        </Button>
       </div>
 
       {/* 安装说明 */}
