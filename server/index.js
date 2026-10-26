@@ -24,6 +24,7 @@ import {
 import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles, extractUrl, downloadFromParsedData } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
 import { fetchFeed, refreshSource, refreshAllSources, startRssScheduler } from './rss.js';
+import { ensureVisitSharesTable, registerVisitSharing } from './visit-sharing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -49,6 +50,7 @@ app.options('*', (req, res) => {
 });
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
+registerVisitSharing(app, { pool, authMiddleware, transformRow });
 
 // ── 头像静态服务（免鉴权，文件名含随机串不可枚举；低敏感资源） ──────────
 const AVATARS_DIR = path.join(__dirname, '..', 'uploads', 'avatars');
@@ -3770,7 +3772,7 @@ async function ensureHealthProfileMemberColumn() {
 }
 
 // ── 启动服务器 ──────────────────────────────────────────────
-Promise.all([ensureVisitMedicationsTable(), ensureHealthProfileMemberColumn()])
+Promise.all([ensureVisitMedicationsTable(), ensureHealthProfileMemberColumn(), ensureVisitSharesTable(pool)])
   .then(() => console.log('db schema ready'))
   .catch(err => console.error('db init failed:', err.message))
   .finally(() => {

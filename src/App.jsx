@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const Index = lazy(() => import("./pages/Index"));
+const SharedVisitPage = lazy(() => import("./pages/SharedVisitPage"));
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ const App = () => (
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/shared/visits/:token" element={<SharedVisitPage />} />
               {/* 主路由：所有功能都在 Index 内通过 ?tab= 和 ?id= 控制 */}
               <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
               {/* 旧路由兼容 → 重定向到 /?tab=xxx */}

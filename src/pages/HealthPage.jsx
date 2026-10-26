@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { lunarDateText } from '@/lib/lunar';
 import { LunarBirthdayPicker } from '@/components/LunarBirthdayPicker';
+import VisitShareDialog from '@/components/VisitShareDialog';
 
 // ════════════════════════════════════════════════════════════════════
 // 设计系统（统一字号 / 间距 / 触摸目标）
@@ -1114,6 +1115,7 @@ const HealthPage = () => {
 
   const [profileDialog, setProfileDialog] = useState({ open: false, initial: null });
   const [visitDialog, setVisitDialog] = useState({ open: false, initial: null });
+  const [shareVisit, setShareVisit] = useState(null);
   const [medDialog, setMedDialog] = useState({ open: false, initial: null, visitId: null });
   const [medPicker, setMedPicker] = useState({ open: false, visitId: null });
   const [removeMedTarget, setRemoveMedTarget] = useState(null); // { visit_id, med }
@@ -1630,6 +1632,7 @@ const HealthPage = () => {
                           )}
                         </div>
                         {/* 删除按钮（阻止冒泡，避免触发行点击） */}
+                        <Button variant="outline" size="sm" onClick={e => { e.stopPropagation(); setShareVisit(v); }}>分享</Button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'visit', id: v.id, name: '就诊记录' }); }}
                           className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90 flex-shrink-0"
@@ -1647,6 +1650,7 @@ const HealthPage = () => {
         </div>
       )}
 
+      <VisitShareDialog visit={shareVisit} onClose={() => setShareVisit(null)} api={api} />
       <ProfileFormDialog
         open={profileDialog.open}
         onClose={() => setProfileDialog({ open: false, initial: null })}
